@@ -3,7 +3,25 @@
 import { useState, useCallback, useRef, useMemo, Suspense, memo, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  useDroppable,
+  closestCorners,
+  type DragEndEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Badge, Button, InlineEdit, Select, DatePicker, SlidePanel, Spinner } from '@/components/ui';
 import { X } from 'lucide-react';
@@ -105,71 +123,116 @@ function rebalance(tasks: Task[]): Task[] {
   return sorted.map((t, i) => ({ ...t, position: (i + 1) * 1000 }));
 }
 
-/* ---------- memoized task card ---------- */
+/* ---------- KanbanCard (sortable) ---------- */
 
-const TaskCard = memo(function TaskCard({
+const KanbanCard = memo(function KanbanCard({
   task,
-  index,
   onClick,
 }: {
   task: Task;
-  index: number;
-  onClick: (task: Task) => void;
+  onClick?: (task: Task) => void;
 }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: task.id });
+
   const dotColor = PRIORITY_DOT_COLORS[task.priority] ?? null;
 
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    padding: '12px 14px',
+    height: 96,
+    borderRadius: 'var(--radius-md)',
+    background: 'linear-gradient(135deg, rgba(255,255,255,0.03), transparent)',
+    backdropFilter: 'blur(8px)',
+    border: `1px solid var(--glass-border)`,
+    boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+    cursor: isDragging ? 'grabbing' : 'grab',
+    opacity: isDragging ? 0.4 : 1,
+    position: 'relative',
+  };
+
   return (
-    <Draggable draggableId={String(task.id)} index={index}>
-      {(provided, snapshot) => (
-        <div
-          ref={provided.innerRef}
-          {...provided.draggableProps}
-          {...provided.dragHandleProps}
-          onClick={() => onClick(task)}
-          className="task-card relative border rounded-md flex flex-col select-none"
-          style={{
-            ...provided.draggableProps.style,
-            padding: '12px 14px',
-            height: 96,
-            borderRadius: 'var(--radius-md)',
-            background: snapshot.isDragging
-              ? 'var(--glass-bg)'
-              : 'linear-gradient(135deg, rgba(255,255,255,0.03), transparent)',
-            backdropFilter: 'blur(8px)',
-            border: `1px solid ${snapshot.isDragging ? 'var(--accent)' : 'var(--glass-border)'}`,
-            boxShadow: snapshot.isDragging ? '0 16px 48px rgba(0,0,0,0.7)' : '0 1px 3px rgba(0,0,0,0.3)',
-            transition: 'border-color 200ms ease, box-shadow 200ms ease, transform 180ms ease, background 200ms ease',
-            transform: snapshot.isDragging ? 'scale(1.02) rotate(0.5deg)' : undefined,
-            cursor: snapshot.isDragging ? 'grabbing' : 'grab',
-            animation: `fade-in-up 200ms ease forwards`,
-            animationDelay: `${index * 20}ms`,
-            opacity: 0,
-          }}
-        >
-          {dotColor && (
-            <span
-              className="absolute rounded-full"
-              style={{ top: 8, right: 8, width: 6, height: 6, backgroundColor: dotColor }}
-            />
-          )}
-          <div
-            className="text-13 text-[var(--text-primary)] overflow-hidden"
-            style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', fontWeight: 500, paddingRight: dotColor ? 14 : 0 }}
-          >
-            {task.title}
-          </div>
-          <div className="flex items-center gap-2 mt-auto">
-            <span className="text-10 text-[var(--text-muted)] flex-shrink-0">#{task.id}</span>
-            {task.project && <Badge label={task.project} variant="neutral" size="xs" />}
-            <span className="flex-1" />
-            {task.assignee && <span className="text-11 text-[var(--text-muted)]">{task.assignee}</span>}
-            {task.due_date && <span className={`text-11 ${dueDateColor(task.due_date)}`}>{formatShortDate(task.due_date)}</span>}
-          </div>
-        </div>
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className="task-card border rounded-md flex flex-col select-none"
+      onClick={() => !isDragging && onClick?.(task)}
+    >
+      {dotColor && (
+        <span
+          className="absolute rounded-full"
+          style={{ top: 8, right: 8, width: 6, height: 6, backgroundColor: dotColor }}
+        />
       )}
-    </Draggable>
+      <div
+        className="text-13 text-[var(--text-primary)] overflow-hidden"
+        style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', fontWeight: 500, paddingRight: dotColor ? 14 : 0 }}
+      >
+        {task.title}
+      </div>
+      <div className="flex items-center gap-2 mt-auto">
+        <span className="text-10 text-[var(--text-muted)] flex-shrink-0">#{task.id}</span>
+        {task.project && <Badge label={task.project} variant="neutral" size="xs" />}
+        <span className="flex-1" />
+        {task.assignee && <span className="text-11 text-[var(--text-muted)]">{task.assignee}</span>}
+        {task.due_date && <span className={`text-11 ${dueDateColor(task.due_date)}`}>{formatShortDate(task.due_date)}</span>}
+      </div>
+    </div>
   );
 });
+
+/* ---------- DragOverlayCard ---------- */
+
+function DragOverlayCard({ task }: { task: Task }) {
+  const dotColor = PRIORITY_DOT_COLORS[task.priority] ?? null;
+  return (
+    <div
+      className="task-card border rounded-md flex flex-col select-none"
+      style={{
+        padding: '12px 14px',
+        height: 96,
+        borderRadius: 'var(--radius-md)',
+        background: 'var(--glass-bg)',
+        backdropFilter: 'blur(8px)',
+        border: '1px solid var(--accent)',
+        boxShadow: '0 16px 48px rgba(0,0,0,0.7)',
+        transform: 'scale(1.02) rotate(0.5deg)',
+        cursor: 'grabbing',
+        position: 'relative',
+        opacity: 1,
+      }}
+    >
+      {dotColor && (
+        <span
+          className="absolute rounded-full"
+          style={{ top: 8, right: 8, width: 6, height: 6, backgroundColor: dotColor }}
+        />
+      )}
+      <div
+        className="text-13 text-[var(--text-primary)] overflow-hidden"
+        style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', fontWeight: 500, paddingRight: dotColor ? 14 : 0 }}
+      >
+        {task.title}
+      </div>
+      <div className="flex items-center gap-2 mt-auto">
+        <span className="text-10 text-[var(--text-muted)] flex-shrink-0">#{task.id}</span>
+        {task.project && <Badge label={task.project} variant="neutral" size="xs" />}
+        <span className="flex-1" />
+        {task.assignee && <span className="text-11 text-[var(--text-muted)]">{task.assignee}</span>}
+        {task.due_date && <span className={`text-11 ${dueDateColor(task.due_date)}`}>{formatShortDate(task.due_date)}</span>}
+      </div>
+    </div>
+  );
+}
 
 /* ---------- KanbanColumn ---------- */
 
@@ -186,6 +249,7 @@ interface KanbanColumnProps {
   onNewTaskCommit?: (title: string) => void;
   onNewTaskDiscard?: () => void;
   onTaskClick: (task: Task) => void;
+  isOver?: boolean;
 }
 
 function KanbanColumn({
@@ -202,6 +266,10 @@ function KanbanColumn({
   onNewTaskDiscard,
   onTaskClick,
 }: KanbanColumnProps) {
+  const { setNodeRef, isOver } = useDroppable({ id: colKey });
+
+  const taskIds = useMemo(() => tasks.map(t => t.id), [tasks]);
+
   const badgeLabel = useMemo(() => {
     if (colKey === 'done' && totalDone !== undefined && doneVisible !== undefined && totalDone > doneVisible) {
       return `${doneVisible}/${totalDone}`;
@@ -210,75 +278,68 @@ function KanbanColumn({
   }, [colKey, tasks.length, totalDone, doneVisible]);
 
   return (
-    <Droppable droppableId={colKey}>
-      {(provided, snapshot) => (
-        <div
-          ref={provided.innerRef}
-          {...provided.droppableProps}
-          className="flex flex-col w-[300px] min-w-[300px] gap-2 rounded-lg"
-          style={{
-            background: snapshot.isDraggingOver ? 'rgba(99,102,241,0.06)' : 'transparent',
-            outline: snapshot.isDraggingOver ? '1.5px solid rgba(99,102,241,0.3)' : '1.5px solid transparent',
-            padding: '0 4px 8px',
-          }}
-        >
-          {/* column header */}
-          <div className="flex items-center justify-between mb-2 pb-2" style={{ height: 36, borderBottom: '1px solid var(--border)' }}>
-            <div className="flex items-center gap-2">
-              <span className="text-11 uppercase text-[var(--text-muted)]" style={{ fontWeight: 500, letterSpacing: '0.06em' }}>
-                {label}
-              </span>
-              <Badge label={badgeLabel} variant="neutral" size="xs" />
-            </div>
-            {colKey === 'todo' && (
-              <Button variant="ghost" size="sm" onClick={onAddTask}>
-                + New
-              </Button>
-            )}
-          </div>
-
-          {/* column body */}
-          <div className="flex-1 overflow-y-auto flex flex-col gap-1.5 pr-1">
-            {/* new task input */}
-            {colKey === 'todo' && addingTask && (
-              <div className="bg-[var(--bg-card)] border border-[var(--accent)] rounded-md p-[12px_14px] h-[96px]">
-                <input
-                  ref={newTaskRef}
-                  type="text"
-                  placeholder="Task title..."
-                  className="w-full bg-transparent text-13 text-[var(--text-primary)] outline-none"
-                  onBlur={e => onNewTaskCommit?.(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') onNewTaskCommit?.((e.target as HTMLInputElement).value);
-                    if (e.key === 'Escape') onNewTaskDiscard?.();
-                  }}
-                />
-              </div>
-            )}
-
-            {tasks.map((task, index) => (
-              <TaskCard
-                key={task.id}
-                task={task}
-                index={addingTask && colKey === 'todo' ? index + 1 : index}
-                onClick={onTaskClick}
-              />
-            ))}
-
-            {colKey === 'done' && totalDone !== undefined && doneVisible !== undefined && totalDone > doneVisible && (
-              <button
-                className="text-11 text-[var(--text-muted)] hover:text-[var(--text-primary)] py-2 text-center w-full cursor-pointer transition-colors duration-[80ms]"
-                onClick={onLoadMore}
-              >
-                Load more ({totalDone - doneVisible} remaining)
-              </button>
-            )}
-
-            {provided.placeholder}
-          </div>
+    <div
+      className="flex flex-col w-[300px] min-w-[300px] gap-2 rounded-lg"
+      style={{
+        background: isOver ? 'rgba(99,102,241,0.06)' : 'transparent',
+        outline: isOver ? '1.5px solid rgba(99,102,241,0.3)' : '1.5px solid transparent',
+        padding: '0 4px 8px',
+      }}
+    >
+      {/* column header */}
+      <div className="flex items-center justify-between mb-2 pb-2" style={{ height: 36, borderBottom: '1px solid var(--border)' }}>
+        <div className="flex items-center gap-2">
+          <span className="text-11 uppercase text-[var(--text-muted)]" style={{ fontWeight: 500, letterSpacing: '0.06em' }}>
+            {label}
+          </span>
+          <Badge label={badgeLabel} variant="neutral" size="xs" />
         </div>
-      )}
-    </Droppable>
+        {colKey === 'todo' && (
+          <Button variant="ghost" size="sm" onClick={onAddTask}>
+            + New
+          </Button>
+        )}
+      </div>
+
+      {/* column body — droppable target + sortable context */}
+      <div ref={setNodeRef} className="flex-1 overflow-y-auto flex flex-col gap-1.5 pr-1">
+        {/* new task input */}
+        {colKey === 'todo' && addingTask && (
+          <div className="bg-[var(--bg-card)] border border-[var(--accent)] rounded-md p-[12px_14px] h-[96px]">
+            <input
+              ref={newTaskRef}
+              type="text"
+              placeholder="Task title..."
+              className="w-full bg-transparent text-13 text-[var(--text-primary)] outline-none"
+              onBlur={e => onNewTaskCommit?.(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') onNewTaskCommit?.((e.target as HTMLInputElement).value);
+                if (e.key === 'Escape') onNewTaskDiscard?.();
+              }}
+            />
+          </div>
+        )}
+
+        <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
+          {tasks.map(task => (
+            <KanbanCard
+              key={task.id}
+              task={task}
+              onClick={onTaskClick}
+            />
+          ))}
+        </SortableContext>
+
+        {colKey === 'done' && totalDone !== undefined && doneVisible !== undefined && totalDone > doneVisible && (
+          <button
+            className="text-11 text-[var(--text-muted)] hover:text-[var(--text-primary)] py-2 text-center w-full cursor-pointer transition-colors duration-[80ms]"
+            onClick={onLoadMore}
+          >
+            Load more ({totalDone - doneVisible} remaining)
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -304,6 +365,7 @@ function TasksPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [addingTask, setAddingTask] = useState(false);
   const [doneVisible, setDoneVisible] = useState(DONE_PAGE_SIZE);
+  const [activeTask, setActiveTask] = useState<Task | null>(null);
   const newTaskRef = useRef<HTMLInputElement>(null);
 
   /* Reset doneVisible when filter changes */
@@ -318,12 +380,23 @@ function TasksPage() {
     }
   }, [addingTask]);
 
+  /* ---------- sensors ---------- */
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
   /* ---------- queries ---------- */
 
   const { data: tasks = [] } = useQuery<Task[]>({
     queryKey: ['tasks'],
     queryFn: () => fetch('/api/tasks').then(r => r.json()).then(d => d.tasks ?? []),
-    staleTime: 5 * 60_000, // 5 min — don't refetch and stomp optimistic state
+    staleTime: 5 * 60_000,
     refetchOnWindowFocus: false,
   });
 
@@ -371,15 +444,12 @@ function TasksPage() {
       queryClient.setQueryData<Task[]>(['tasks'], old =>
         (old ?? []).map(t => t.id === id ? { ...t, ...fields } : t)
       );
-      // Update selectedTask immediately
       setSelectedTask(cur => cur && cur.id === id ? { ...cur, ...fields } : cur);
       return { prev };
     },
     onError: (_err, _vars, ctx) => {
       if (ctx?.prev) queryClient.setQueryData(['tasks'], ctx.prev);
     },
-    // Don't invalidate on settle — the optimistic update is authoritative.
-    // Only sync from server on explicit refresh or error.
   });
 
   const createMutation = useMutation({
@@ -392,7 +462,6 @@ function TasksPage() {
     onMutate: async (title) => {
       await queryClient.cancelQueries({ queryKey: ['tasks'] });
       const prev = queryClient.getQueryData<Task[]>(['tasks']);
-      // Optimistic placeholder
       const placeholder: Task = {
         id: -Date.now(),
         title,
@@ -413,7 +482,6 @@ function TasksPage() {
       if (ctx?.prev) queryClient.setQueryData(['tasks'], ctx.prev);
     },
     onSuccess: (newTask) => {
-      // Replace placeholder with real task
       queryClient.setQueryData<Task[]>(['tasks'], old =>
         (old ?? []).map(t => t.id < 0 ? newTask : t)
       );
@@ -436,21 +504,48 @@ function TasksPage() {
 
   /* ---------- drag and drop ---------- */
 
-  const onDragEnd = useCallback((result: DropResult) => {
-    const { destination, source, draggableId } = result;
-    if (!destination) return;
-    if (destination.droppableId === source.droppableId && destination.index === source.index) return;
-
-    const taskId = parseInt(draggableId, 10);
-    const newStatus = destination.droppableId;
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    const taskId = Number(event.active.id);
     const allTasks = queryClient.getQueryData<Task[]>(['tasks']) ?? [];
+    const task = allTasks.find(t => t.id === taskId) ?? null;
+    setActiveTask(task);
+  }, [queryClient]);
 
-    // Destination column tasks (excluding the dragged card)
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    setActiveTask(null);
+    const { active, over } = event;
+    if (!over) return;
+
+    const taskId = Number(active.id);
+    const allTasks = queryClient.getQueryData<Task[]>(['tasks']) ?? [];
+    const draggedTask = allTasks.find(t => t.id === taskId);
+    if (!draggedTask) return;
+
+    // Determine destination column: over could be a column id or a task id
+    const overId = over.id;
+    const overIsColumn = COLUMNS.some(c => c.key === overId);
+    const newStatus = overIsColumn
+      ? String(overId)
+      : (allTasks.find(t => t.id === Number(overId))?.status ?? draggedTask.status);
+
+    // Destination column tasks (excluding dragged card)
     const destColTasks = allTasks
       .filter(t => t.status === newStatus && t.id !== taskId)
       .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
 
-    let newPosition = computeNewPosition(destColTasks, destination.index);
+    // Determine target index
+    let toIndex: number;
+    if (overIsColumn) {
+      toIndex = destColTasks.length;
+    } else {
+      const overIndex = destColTasks.findIndex(t => t.id === Number(overId));
+      toIndex = overIndex >= 0 ? overIndex : destColTasks.length;
+    }
+
+    // No change
+    if (newStatus === draggedTask.status && toIndex === destColTasks.findIndex(t => t.id === taskId)) return;
+
+    let newPosition = computeNewPosition(destColTasks, toIndex);
 
     // Rebalance if precision is getting tight
     let rebalancedTasks: Task[] | null = null;
@@ -476,9 +571,9 @@ function TasksPage() {
       return old.map(t => t.id === taskId ? { ...t, status: newStatus, position: newPosition } : t);
     });
 
-    // Fire API (background, rollback on failure)
+    // Fire API in background
     const fieldsToUpdate: Partial<Task> = { position: newPosition };
-    if (newStatus !== source.droppableId) fieldsToUpdate.status = newStatus;
+    if (newStatus !== draggedTask.status) fieldsToUpdate.status = newStatus;
 
     fetch(`/api/tasks/${taskId}`, {
       method: 'PATCH',
@@ -562,7 +657,12 @@ function TasksPage() {
         }
       />
 
-      <DragDropContext onDragEnd={onDragEnd}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCorners}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+      >
         <div className="flex flex-row gap-3 p-6 flex-1 overflow-auto items-start">
           {COLUMNS.map(col => (
             <KanbanColumn
@@ -582,7 +682,11 @@ function TasksPage() {
             />
           ))}
         </div>
-      </DragDropContext>
+
+        <DragOverlay>
+          {activeTask ? <DragOverlayCard task={activeTask} /> : null}
+        </DragOverlay>
+      </DndContext>
 
       {/* slide panel */}
       <SlidePanel
