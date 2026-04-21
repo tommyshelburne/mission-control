@@ -3,10 +3,8 @@ import { getDb } from '@/lib/db';
 
 const ALLOWED_FIELDS = ['name', 'description', 'goal', 'status', 'color', 'due_date'];
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const db = getDb();
   const id = params.id;
   const body = await request.json();
@@ -39,10 +37,8 @@ export async function PATCH(
   return NextResponse.json({ project });
 }
 
-export async function DELETE(
-  _request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const db = getDb();
   const id = params.id;
 
