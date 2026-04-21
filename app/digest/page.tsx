@@ -164,11 +164,20 @@ function EscalationsPanel({ escalations }: { escalations: Escalation[] }) {
   );
 }
 
+interface UsageData {
+  openrouter: number | null;
+  anthropicToday: number | null;
+  anthropicYesterday: number | null;
+  totalToday: number | null;
+  cacheWriteToday: number | null;
+  mainTurnsToday: number | null;
+}
+
 export default function DigestPage() {
   const router = useRouter();
   const [data, setData] = useState<DigestData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [usageDollars, setUsageDollars] = useState<number | null | undefined>(undefined);
+  const [usage, setUsage] = useState<UsageData | null | undefined>(undefined);
 
   const fetchDigest = useCallback(async () => {
     try {
@@ -192,8 +201,8 @@ export default function DigestPage() {
   useEffect(() => {
     fetch('/api/usage')
       .then(r => r.json())
-      .then(d => setUsageDollars(d.openrouter ?? null))
-      .catch(() => setUsageDollars(null));
+      .then((d: UsageData) => setUsage(d))
+      .catch(() => setUsage(null));
   }, []);
 
   const openCount =
@@ -403,31 +412,54 @@ export default function DigestPage() {
               </div>
             </div>
             {/* Usage */}
-            {usageDollars !== undefined && (
+            {usage !== undefined && (
               <div
-                className="bg-[var(--bg-card)] border border-[var(--border)] rounded-lg flex items-center gap-6 px-4"
-                style={{ height: 44 }}
+                className="bg-[var(--bg-card)] border border-[var(--border)] rounded-lg flex items-center gap-6 px-4 flex-wrap"
+                style={{ minHeight: 44, paddingTop: 8, paddingBottom: 8 }}
               >
-                <span style={{ fontSize: 11, fontWeight: 600 }} className="text-[var(--text-muted)] uppercase tracking-wide">Usage</span>
-                <div className="flex items-center gap-6">
+                <span style={{ fontSize: 11, fontWeight: 600 }} className="text-[var(--text-muted)] uppercase tracking-wide">Usage (today, UTC)</span>
+                <div className="flex items-center gap-6 flex-wrap">
+                  <UsageStat
+                    label="Anthropic"
+                    value={usage?.anthropicToday}
+                    delta={
+                      usage?.anthropicToday != null && usage?.anthropicYesterday != null
+                        ? usage.anthropicToday - usage.anthropicYesterday
+                        : null
+                    }
+                    fractionDigits={2}
+                  />
+                  <UsageStat
+                    label="OpenRouter"
+                    value={usage?.openrouter}
+                    fractionDigits={4}
+                  />
+                  <UsageStat
+                    label="All providers"
+                    value={usage?.totalToday}
+                    fractionDigits={2}
+                  />
                   <div className="flex items-center gap-2">
-                    <span style={{ fontSize: 11 }} className="text-[var(--text-muted)]">OpenRouter (today)</span>
+                    <span style={{ fontSize: 11 }} className="text-[var(--text-muted)]">main turns</span>
                     <span style={{ fontSize: 13, fontWeight: 500 }} className="text-[var(--text-primary)]">
-                      {usageDollars !== null ? `$${usageDollars.toFixed(4)}` : '—'}
+                      {usage?.mainTurnsToday ?? '—'}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span style={{ fontSize: 11 }} className="text-[var(--text-muted)]">Anthropic</span>
-                    <a
-                      href="https://console.anthropic.com/usage"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ fontSize: 11 }}
-                      className="text-[var(--accent)] hover:underline"
-                    >
-                      View Console →
-                    </a>
+                    <span style={{ fontSize: 11 }} className="text-[var(--text-muted)]">cache writes</span>
+                    <span style={{ fontSize: 13, fontWeight: 500 }} className="text-[var(--text-primary)]">
+                      {usage?.cacheWriteToday != null ? `${(usage.cacheWriteToday / 1e6).toFixed(2)}M` : '—'}
+                    </span>
                   </div>
+                  <a
+                    href="https://console.anthropic.com/usage"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ fontSize: 11 }}
+                    className="text-[var(--accent)] hover:underline ml-auto"
+                  >
+                    Anthropic console →
+                  </a>
                 </div>
               </div>
             )}
@@ -437,6 +469,37 @@ export default function DigestPage() {
         )}
       </div>
     </>
+  );
+}
+
+function UsageStat({
+  label,
+  value,
+  delta,
+  fractionDigits = 2,
+}: {
+  label: string;
+  value: number | null | undefined;
+  delta?: number | null;
+  fractionDigits?: number;
+}) {
+  const display = value != null ? `$${value.toFixed(fractionDigits)}` : '—';
+  const deltaDisplay =
+    delta != null
+      ? `${delta >= 0 ? '+' : ''}$${delta.toFixed(fractionDigits)}`
+      : null;
+  const deltaColor =
+    delta == null ? 'var(--text-muted)' : delta > 0 ? 'var(--danger)' : 'var(--success)';
+  return (
+    <div className="flex items-center gap-2">
+      <span style={{ fontSize: 11 }} className="text-[var(--text-muted)]">{label}</span>
+      <span style={{ fontSize: 13, fontWeight: 500 }} className="text-[var(--text-primary)]">
+        {display}
+      </span>
+      {deltaDisplay && (
+        <span style={{ fontSize: 10, color: deltaColor }}>{deltaDisplay}</span>
+      )}
+    </div>
   );
 }
 

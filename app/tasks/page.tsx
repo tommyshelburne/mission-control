@@ -36,6 +36,8 @@ interface Task {
   priority: string;
   assignee: string;
   project: string;
+  project_id: number | null;
+  parent_id: number | null;
   due_date: string;
   position: number;
   created_at: string;
@@ -54,7 +56,7 @@ const COLUMNS: { key: string; label: string }[] = [
   { key: 'done', label: 'Done' },
 ];
 
-const ASSIGNEES = ['Tommy', 'Claw', 'Rex', 'Scout', 'Atlas', 'Herald', 'Lens', 'Quill', 'Coach', 'Warden'];
+const ASSIGNEES = ['Tommy', 'Claw', 'Rex', 'Scout', 'Herald', 'Quill', 'Coach', 'Warden'];
 
 const STATUS_OPTIONS = COLUMNS.map(c => ({ value: c.key, label: c.label }));
 const ASSIGNEE_OPTIONS = ASSIGNEES.map(a => ({ value: a, label: a }));
@@ -127,9 +129,11 @@ function rebalance(tasks: Task[]): Task[] {
 
 const KanbanCard = memo(function KanbanCard({
   task,
+  subtaskStats,
   onClick,
 }: {
   task: Task;
+  subtaskStats?: { total: number; done: number };
   onClick?: (task: Task) => void;
 }) {
   const {
@@ -182,6 +186,13 @@ const KanbanCard = memo(function KanbanCard({
       <div className="flex items-center gap-2 mt-auto">
         <span className="text-10 text-[var(--text-muted)] flex-shrink-0">#{task.id}</span>
         {task.project && <Badge label={task.project} variant="neutral" size="xs" />}
+        {subtaskStats && subtaskStats.total > 0 && (
+          <Badge
+            label={`${subtaskStats.done}/${subtaskStats.total}`}
+            variant={subtaskStats.done === subtaskStats.total ? 'success' : 'neutral'}
+            size="xs"
+          />
+        )}
         <span className="flex-1" />
         {task.assignee && <span className="text-11 text-[var(--text-muted)]">{task.assignee}</span>}
         {task.due_date && <span className={`text-11 ${dueDateColor(task.due_date)}`}>{formatShortDate(task.due_date)}</span>}
@@ -250,6 +261,7 @@ interface KanbanColumnProps {
   onNewTaskDiscard?: () => void;
   onTaskClick: (task: Task) => void;
   isOver?: boolean;
+  subtaskStats?: Record<number, { total: number; done: number }>;
 }
 
 function KanbanColumn({
@@ -265,6 +277,7 @@ function KanbanColumn({
   onNewTaskCommit,
   onNewTaskDiscard,
   onTaskClick,
+  subtaskStats,
 }: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: colKey });
 
@@ -325,6 +338,7 @@ function KanbanColumn({
             <KanbanCard
               key={task.id}
               task={task}
+              subtaskStats={subtaskStats?.[task.id]}
               onClick={onTaskClick}
             />
           ))}
@@ -408,10 +422,26 @@ function TasksPage() {
 
   /* ---------- derived data ---------- */
 
+  // Kanban shows only top-level tasks; subtasks live inside the detail panel of their parent.
+  const topLevel = useMemo(() => tasks.filter(t => t.parent_id == null), [tasks]);
+
   const displayed = useMemo(
-    () => projectFilter ? tasks.filter(t => t.project === projectFilter) : tasks,
-    [tasks, projectFilter]
+    () => projectFilter ? topLevel.filter(t => t.project === projectFilter) : topLevel,
+    [topLevel, projectFilter]
   );
+
+  // Subtask progress per parent — { parentId: { total, done } }
+  const subtaskStats = useMemo(() => {
+    const m: Record<number, { total: number; done: number }> = {};
+    for (const t of tasks) {
+      if (t.parent_id != null) {
+        if (!m[t.parent_id]) m[t.parent_id] = { total: 0, done: 0 };
+        m[t.parent_id].total++;
+        if (t.status === 'done') m[t.parent_id].done++;
+      }
+    }
+    return m;
+  }, [tasks]);
 
   const totalDone = useMemo(
     () => displayed.filter(t => t.status === 'done').length,
@@ -470,6 +500,8 @@ function TasksPage() {
         priority: 'medium',
         assignee: '',
         project: projectFilter,
+        project_id: null,
+        parent_id: null,
         due_date: '',
         position: -Infinity,
         created_at: new Date().toISOString(),
@@ -485,6 +517,18 @@ function TasksPage() {
       queryClient.setQueryData<Task[]>(['tasks'], old =>
         (old ?? []).map(t => t.id < 0 ? newTask : t)
       );
+    },
+  });
+
+  const createSubtaskMutation = useMutation({
+    mutationFn: ({ title, parent_id }: { title: string; parent_id: number }) =>
+      fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, parent_id, status: 'todo', priority: 'medium' }),
+      }).then(r => r.json()),
+    onSuccess: (newTask) => {
+      queryClient.setQueryData<Task[]>(['tasks'], old => [...(old ?? []), newTask]);
     },
   });
 
@@ -679,6 +723,7 @@ function TasksPage() {
               onNewTaskCommit={handleNewTaskCommit}
               onNewTaskDiscard={handleNewTaskDiscard}
               onTaskClick={handleTaskClick}
+              subtaskStats={subtaskStats}
             />
           ))}
         </div>
@@ -763,6 +808,17 @@ function TasksPage() {
               />
             </div>
 
+            {selectedTask.parent_id == null && (
+              <SubtasksSection
+                parent={selectedTask}
+                allTasks={tasks}
+                onToggle={(id, done) => patchMutation.mutate({ id, fields: { status: done ? 'done' : 'todo' } })}
+                onDelete={(id) => deleteMutation.mutate(id)}
+                onCreate={(title) => createSubtaskMutation.mutate({ title, parent_id: selectedTask.id })}
+                onOpen={(t) => setSelectedTask(t)}
+              />
+            )}
+
             <div className="flex gap-6 pt-2" style={{ borderTop: '1px solid var(--border)' }}>
               <div>
                 <div className="text-11 text-[var(--text-muted)]">Created</div>
@@ -795,5 +851,124 @@ function TasksPage() {
         )}
       </SlidePanel>
     </>
+  );
+}
+
+/* ---------- SubtasksSection ---------- */
+
+function SubtasksSection({
+  parent,
+  allTasks,
+  onToggle,
+  onDelete,
+  onCreate,
+  onOpen,
+}: {
+  parent: Task;
+  allTasks: Task[];
+  onToggle: (id: number, done: boolean) => void;
+  onDelete: (id: number) => void;
+  onCreate: (title: string) => void;
+  onOpen: (task: Task) => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState('');
+  const subtasks = useMemo(
+    () => allTasks
+      .filter(t => t.parent_id === parent.id)
+      .sort((a, b) => {
+        const aDone = a.status === 'done' ? 1 : 0;
+        const bDone = b.status === 'done' ? 1 : 0;
+        if (aDone !== bDone) return aDone - bDone;
+        return (a.position ?? 0) - (b.position ?? 0);
+      }),
+    [allTasks, parent.id],
+  );
+  const done = subtasks.filter(t => t.status === 'done').length;
+
+  const commit = () => {
+    const v = draft.trim();
+    if (v) onCreate(v);
+    setDraft('');
+    setAdding(false);
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-11 text-[var(--text-muted)]" style={{ fontWeight: 400 }}>
+          Subtasks {subtasks.length > 0 && <span>({done}/{subtasks.length})</span>}
+        </div>
+        <Button variant="ghost" size="sm" onClick={() => setAdding(true)}>+ Subtask</Button>
+      </div>
+
+      <div className="flex flex-col gap-1">
+        {subtasks.map(t => (
+          <div
+            key={t.id}
+            className="group flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-[var(--bg-elevated)]"
+            style={{ border: '1px solid transparent' }}
+          >
+            <input
+              type="checkbox"
+              checked={t.status === 'done'}
+              onChange={(e) => onToggle(t.id, e.target.checked)}
+              style={{ accentColor: 'var(--accent)', cursor: 'pointer' }}
+            />
+            <button
+              onClick={() => onOpen(t)}
+              className="flex-1 text-left truncate"
+              style={{
+                fontSize: 13,
+                color: t.status === 'done' ? 'var(--text-muted)' : 'var(--text-primary)',
+                textDecoration: t.status === 'done' ? 'line-through' : 'none',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                padding: 0,
+              }}
+            >
+              {t.title}
+            </button>
+            <button
+              onClick={() => onDelete(t.id)}
+              className="opacity-0 group-hover:opacity-100"
+              style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 2, fontSize: 12 }}
+              aria-label="Delete subtask"
+            >
+              ×
+            </button>
+          </div>
+        ))}
+        {adding && (
+          <input
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commit();
+              if (e.key === 'Escape') { setDraft(''); setAdding(false); }
+            }}
+            placeholder="Subtask title..."
+            className="mx-2"
+            style={{
+              fontSize: 13,
+              background: 'var(--bg-card)',
+              border: '1px solid var(--accent)',
+              borderRadius: 'var(--radius-xs)',
+              color: 'var(--text-primary)',
+              padding: '6px 10px',
+              outline: 'none',
+            }}
+          />
+        )}
+        {subtasks.length === 0 && !adding && (
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: '6px 0' }}>
+            No subtasks yet.
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
