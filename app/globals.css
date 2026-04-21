@@ -1,4 +1,6 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 :root {
   --bg-base:        #08080b;
@@ -37,46 +39,6 @@
   --glass-highlight: rgba(255, 255, 255, 0.03);
   --ease-out-expo:  cubic-bezier(0.16, 1, 0.3, 1);
   --transition-fluid: 240ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-@theme inline {
-  --color-base:        var(--bg-base);
-  --color-surface:     var(--bg-surface);
-  --color-elevated:    var(--bg-elevated);
-  --color-hover:       var(--bg-hover);
-  --color-card:        var(--bg-card);
-  --color-border:      var(--border);
-  --color-border-mid:  var(--border-mid);
-  --color-primary:     var(--text-primary);
-  --color-secondary:   var(--text-secondary);
-  --color-muted:       var(--text-muted);
-  --color-accent:      var(--accent);
-  --color-success:     var(--success);
-  --color-warning:     var(--warning);
-  --color-danger:      var(--danger);
-
-  --radius-xs: var(--radius-xs);
-  --radius-sm: var(--radius-sm);
-  --radius-md: var(--radius-md);
-  --radius-lg: var(--radius-lg);
-  --radius-xl: var(--radius-xl);
-
-  --text-10: 10px;
-  --text-10--line-height: 14px;
-  --text-11: 11px;
-  --text-11--line-height: 16px;
-  --text-12: 12px;
-  --text-12--line-height: 18px;
-  --text-13: 13px;
-  --text-13--line-height: 20px;
-  --text-14: 14px;
-  --text-14--line-height: 20px;
-  --text-16: 16px;
-  --text-16--line-height: 24px;
-  --text-18: 18px;
-  --text-18--line-height: 28px;
-  --text-24: 24px;
-  --text-24--line-height: 32px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
