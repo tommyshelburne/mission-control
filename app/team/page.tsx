@@ -132,11 +132,13 @@ export default function TeamPage() {
           <Spinner size={20} />
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-6">
-          <AgentCard agent={tommyCard} activity={[]} />
-          {agents.map((a) => (
-            <AgentCard key={a.name} agent={a} activity={activityByActor[a.name] ?? []} />
-          ))}
+        <div className="flex-1 overflow-y-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-6">
+            <AgentCard agent={tommyCard} activity={[]} />
+            {agents.map((a) => (
+              <AgentCard key={a.name} agent={a} activity={activityByActor[a.name] ?? []} />
+            ))}
+          </div>
         </div>
       )}
     </>
