@@ -10,7 +10,8 @@ const SELECT_TASK_WITH_PROJECT = `
   WHERE t.id = ?
 `;
 
-export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+export async function PATCH(request: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const id = params.id;
   const body = await request.json();
   const db = getDb();
@@ -73,7 +74,8 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   return NextResponse.json(task);
 }
 
-export async function DELETE(_request: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_request: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const db = getDb();
   db.prepare('DELETE FROM tasks WHERE id = ?').run(params.id);
   return NextResponse.json({ success: true });
