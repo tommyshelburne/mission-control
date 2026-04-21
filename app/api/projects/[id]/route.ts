@@ -46,8 +46,8 @@ export async function DELETE(
   const db = getDb();
   const id = params.id;
 
-  // Unlink tasks from this project before deleting
-  db.prepare("UPDATE tasks SET project = '' WHERE project = (SELECT name FROM projects WHERE id = ?)").run(id);
+  // Unlink tasks from this project before deleting (FK has ON DELETE SET NULL, but do it explicitly for clarity)
+  db.prepare('UPDATE tasks SET project_id = NULL WHERE project_id = ?').run(id);
   db.prepare('DELETE FROM projects WHERE id = ?').run(id);
 
   return NextResponse.json({ success: true });

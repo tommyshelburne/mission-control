@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { StatusDot } from '@/components/ui';
 import { Clock } from './Clock';
+import { NotificationBell } from './NotificationBell';
 
 const primaryNav = [
   { label: 'Digest',    href: '/digest',    icon: Sun },
@@ -74,8 +75,9 @@ export function Sidebar() {
             color: 'var(--accent)',
           }}
         >
-          v3
+          v4
         </span>
+        <NotificationBell />
       </div>
 
       {/* Primary Nav */}

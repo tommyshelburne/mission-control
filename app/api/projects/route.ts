@@ -22,9 +22,9 @@ export async function GET() {
   const projects = db
     .prepare(
       `SELECT p.*,
-        (SELECT COUNT(*) FROM tasks WHERE project = p.name AND status != 'done') as tasks_open,
-        (SELECT COUNT(*) FROM tasks WHERE project = p.name AND status = 'done') as tasks_done,
-        (SELECT COUNT(*) FROM tasks WHERE project = p.name) as task_count
+        (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND status != 'done') as tasks_open,
+        (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND status = 'done') as tasks_done,
+        (SELECT COUNT(*) FROM tasks WHERE project_id = p.id) as task_count
       FROM projects p ORDER BY p.created_at DESC`
     )
     .all() as ProjectRow[];
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
   const description = body.description ?? '';
   const goal = body.goal ?? '';
   const status = body.status ?? 'active';
-  const color = body.color ?? '#5b5bd6';
+  const color = body.color ?? '#5E5CE6';
   const due_date = body.due_date ?? '';
 
   const result = db
