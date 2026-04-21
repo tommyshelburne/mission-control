@@ -3,7 +3,8 @@ import { getDb } from '@/lib/db';
 
 const STALE_THRESHOLD_SEC = 300;
 
-export async function GET(_request: Request, { params }: { params: { name: string } }) {
+export async function GET(_request: Request, props: { params: Promise<{ name: string }> }) {
+  const params = await props.params;
   const db = getDb();
   const name = params.name;
 

@@ -8,7 +8,8 @@ const ALLOWED = [
   'closed_reason', 'position',
 ] as const;
 
-export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+export async function PATCH(request: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const id = params.id;
   const body = await request.json().catch(() => ({}));
   const db = getDb();
@@ -53,7 +54,8 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   return NextResponse.json({ opportunity: row });
 }
 
-export async function DELETE(_request: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_request: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const db = getDb();
   const info = db.prepare('DELETE FROM opportunities WHERE id = ?').run(params.id);
   if (info.changes === 0) return NextResponse.json({ error: 'Opportunity not found' }, { status: 404 });

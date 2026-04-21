@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 
-export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+export async function PATCH(request: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const body = await request.json().catch(() => ({}));
   const { read } = body as { read?: boolean | number };
 
@@ -18,7 +19,8 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   return NextResponse.json({ notification: row });
 }
 
-export async function DELETE(_request: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_request: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const db = getDb();
   const info = db.prepare('DELETE FROM notifications WHERE id = ?').run(params.id);
   if (info.changes === 0) return NextResponse.json({ error: 'Notification not found' }, { status: 404 });

@@ -4,10 +4,8 @@ import path from 'path';
 
 const MEMORY_DIR = '/home/claw/.openclaw/workspace/memory';
 
-export async function GET(
-  request: Request,
-  { params }: { params: { date: string } }
-) {
+export async function GET(request: Request, props: { params: Promise<{ date: string }> }) {
+  const params = await props.params;
   const { date } = params;
   const filePath = path.join(MEMORY_DIR, `${date}.md`);
 
