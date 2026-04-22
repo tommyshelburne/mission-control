@@ -13,6 +13,10 @@ const ALLOWED_DIRS = [
 
 const SKIP_DIRS = new Set(['node_modules', '.git', 'archive']);
 
+// Categories surfaced under a collapsed "Archived" section in the UI.
+// Non-destructive — files stay on disk; this is purely presentation.
+const ARCHIVED_CATEGORIES = new Set(['ai-utah-100', 'herald', 'warden']);
+
 interface DocEntry {
   path: string;
   title: string;
@@ -20,6 +24,7 @@ interface DocEntry {
   size: number;
   words: number;
   modified: number;
+  archived: boolean;
 }
 
 function extractTitle(filePath: string, content: string): string {
@@ -76,6 +81,7 @@ export async function GET() {
           size: stat.size,
           words,
           modified: stat.mtimeMs,
+          archived: ARCHIVED_CATEGORIES.has(parentDir),
         });
       } catch {
         // skip unreadable files
