@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { AlertTriangle, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { Badge, StatusDot, Spinner } from '@/components/ui';
+import { Badge, Spinner } from '@/components/ui';
 
 interface Task {
   id: number;
@@ -42,7 +42,7 @@ interface DigestData {
   blockedTasks: Task[];
   escalations: Escalation[];
   cronJobs: CronJob[];
-  bidmatch: { running: boolean; enabled: boolean; detail: string };
+  bidmatch?: { running: boolean; enabled: boolean; detail: string };
 }
 
 function formatDate(dateStr: string): string {
@@ -354,30 +354,13 @@ export default function DigestPage() {
               </div>
             </div>
 
-            {/* Bottom row: BidMatch + Cron Jobs */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-lg overflow-hidden">
-                <div className="flex items-center gap-2 px-4 border-b border-[var(--border)]" style={{ height: 40 }}>
-                  <StatusDot
-                    status={data.bidmatch.running ? 'active' : 'error'}
-                  />
-                  <h3 style={{ fontSize: 12, fontWeight: 600 }} className="text-[var(--text-primary)]">
-                    BidMatch
-                  </h3>
-                </div>
-                <div className="px-4 py-3">
-                  <p className="text-12 text-[var(--text-secondary)]">
-                    {data.bidmatch.detail}
-                  </p>
-                </div>
+            {/* Bottom row: Cron Jobs */}
+            <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-lg overflow-hidden">
+              <div className="flex items-center px-4 border-b border-[var(--border)]" style={{ height: 40 }}>
+                <h3 style={{ fontSize: 12, fontWeight: 600 }} className="text-[var(--text-primary)]">
+                  Upcoming Cron Jobs
+                </h3>
               </div>
-
-              <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-lg overflow-hidden">
-                <div className="flex items-center px-4 border-b border-[var(--border)]" style={{ height: 40 }}>
-                  <h3 style={{ fontSize: 12, fontWeight: 600 }} className="text-[var(--text-primary)]">
-                    Upcoming Cron Jobs
-                  </h3>
-                </div>
                 <div className="px-4 py-2">
                   {data.cronJobs.length === 0 ? (
                     <p className="text-12 text-[var(--text-muted)]">
@@ -410,7 +393,6 @@ export default function DigestPage() {
                   )}
                 </div>
               </div>
-            </div>
             {/* Usage */}
             {usage !== undefined && (
               <div

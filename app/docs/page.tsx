@@ -99,7 +99,12 @@ export default function DocsPage() {
     setContentLoading(true);
     setContent(null);
     setSaveStatus('idle');
-    setPreview(false);
+    // Restore per-file preview preference (defaults to source/edit mode)
+    try {
+      setPreview(localStorage.getItem(`mc.docs.preview.${filePath}`) === '1');
+    } catch {
+      setPreview(false);
+    }
     try {
       const res = await fetch(`/api/docs/file?path=${encodeURIComponent(filePath)}`);
       if (res.ok) {
@@ -114,6 +119,20 @@ export default function DocsPage() {
       setContentLoading(false);
     }
   }, []);
+
+  const togglePreview = useCallback(() => {
+    setPreview((prev) => {
+      const next = !prev;
+      if (selected) {
+        try {
+          localStorage.setItem(`mc.docs.preview.${selected}`, next ? '1' : '0');
+        } catch {
+          // localStorage disabled — degrade to in-session-only
+        }
+      }
+      return next;
+    });
+  }, [selected]);
 
   const saveFile = useCallback(async (filePath: string, newContent: string) => {
     setSaveStatus('saving');
@@ -373,7 +392,8 @@ export default function DocsPage() {
                   variant="ghost"
                   size="sm"
                   icon={preview ? <EyeOff size={12} /> : <Eye size={12} />}
-                  onClick={() => setPreview(!preview)}
+                  onClick={togglePreview}
+                  title={preview ? 'Switch to source (markdown)' : 'Switch to preview'}
                 />
                 <Button
                   variant="ghost"

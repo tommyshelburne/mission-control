@@ -25,12 +25,16 @@ export async function GET(request: NextRequest) {
     const resolved = path.resolve(filePath);
     const content = fs.readFileSync(resolved, 'utf-8');
     const filename = path.basename(resolved, '.md') + (format === 'txt' ? '.txt' : '.md');
-    const contentType = format === 'txt' ? 'text/plain' : 'text/markdown';
+    // Markdown is plain text — using text/markdown over plain HTTP triggers
+    // Chrome's safe-browsing "dangerous file" warning. text/plain serves the
+    // same content without the scare modal.
+    const safeFilename = filename.replace(/"/g, '');
 
     return new NextResponse(content, {
       headers: {
-        'Content-Type': `${contentType}; charset=utf-8`,
-        'Content-Disposition': `attachment; filename="${filename}"`,
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Content-Disposition': `attachment; filename="${safeFilename}"`,
+        'X-Content-Type-Options': 'nosniff',
       },
     });
   } catch {
