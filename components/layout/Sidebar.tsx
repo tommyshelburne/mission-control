@@ -3,7 +3,7 @@
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
-  Sun, LayoutGrid, TrendingUp, FolderOpen, Brain, Users,
+  Activity, Sun, LayoutGrid, TrendingUp, FolderOpen, Brain, Users,
   Briefcase, FileText, Zap, LucideIcon,
 } from 'lucide-react';
 import { StatusDot } from '@/components/ui';
@@ -11,6 +11,7 @@ import { Clock } from './Clock';
 import { NotificationBell } from './NotificationBell';
 
 const primaryNav = [
+  { label: 'Activity',  href: '/',          icon: Activity },
   { label: 'Digest',    href: '/digest',    icon: Sun },
   { label: 'Tasks',     href: '/tasks',     icon: LayoutGrid },
   { label: 'Pipeline',  href: '/pipeline',  icon: TrendingUp },
@@ -59,24 +60,26 @@ export function Sidebar() {
     <aside className="w-[208px] flex-shrink-0 bg-[var(--bg-surface)] border-r border-[var(--border)] flex flex-col h-full">
       {/* Logo */}
       <div className="h-[52px] flex items-center gap-2.5 px-4 border-b border-[var(--border)]">
-        <div
-          className="flex items-center justify-center rounded-sm"
-          style={{ width: 26, height: 26, background: 'linear-gradient(135deg, var(--accent), #8b5cf6)' }}
-        >
-          <Zap size={14} className="text-white" />
-        </div>
-        <span className="text-13 text-[var(--text-primary)]" style={{ fontWeight: 600, letterSpacing: '-0.01em' }}>Mission Control</span>
-        <span
-          className="ml-auto text-10"
-          style={{
-            padding: '1px 5px',
-            borderRadius: 'var(--radius-xs)',
-            background: 'var(--accent-dim)',
-            color: 'var(--accent)',
-          }}
-        >
-          v4
-        </span>
+        <Link href="/" className="flex items-center gap-2.5 flex-1 min-w-0" aria-label="Mission Control home">
+          <div
+            className="flex items-center justify-center rounded-sm flex-shrink-0"
+            style={{ width: 26, height: 26, background: 'linear-gradient(135deg, var(--accent), #8b5cf6)' }}
+          >
+            <Zap size={14} className="text-white" />
+          </div>
+          <span className="text-13 text-[var(--text-primary)] truncate" style={{ fontWeight: 600, letterSpacing: '-0.01em' }}>Mission Control</span>
+          <span
+            className="text-10 flex-shrink-0"
+            style={{
+              padding: '1px 5px',
+              borderRadius: 'var(--radius-xs)',
+              background: 'var(--accent-dim)',
+              color: 'var(--accent)',
+            }}
+          >
+            v4
+          </span>
+        </Link>
         <NotificationBell />
       </div>
 
