@@ -53,10 +53,14 @@ test.describe('layout invariants', () => {
 test.describe('agents page', () => {
   test('renders all 11 agent cards plus Tommy', async ({ page }: { page: Page }) => {
     await page.goto('/team');
-    // Wait for the agents query to resolve and cards to render.
-    await page.waitForSelector('text=Mission Control', { state: 'visible' });
-    // 11 agents seeded + 1 Tommy synthesized card = 12 cards
-    const cardCount = await page.locator('main >> div.grid > div').count();
+    // Wait for the agents query to resolve and the grid to render. Waiting on
+    // the sidebar text was racy — that appears immediately while the grid is
+    // still loading.
+    const grid = page.locator('main div.grid').first();
+    await expect(grid).toBeVisible();
+    // 11 agents seeded + 1 Tommy synthesized card = 12 cards (more if the
+    // fleet has grown since)
+    const cardCount = await grid.locator('> div').count();
     expect(cardCount).toBeGreaterThanOrEqual(12);
   });
 });
