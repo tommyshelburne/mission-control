@@ -1,12 +1,27 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { FileText, Eye, EyeOff, Download, MoreHorizontal, Plus, ChevronDown, ChevronRight } from 'lucide-react';
+import { FileText, Eye, EyeOff, Download, MoreHorizontal, Plus, ChevronDown, ChevronRight, Check, Circle } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button, EmptyState, Spinner } from '@/components/ui';
 import { CodeMirrorEditor } from '@/components/docs/CodeMirrorEditor';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+
+function relativeTime(ms: number): string {
+  const diff = Date.now() - ms;
+  const secs = Math.floor(diff / 1000);
+  if (secs < 60) return 'now';
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 5) return `${weeks}w`;
+  return new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
 
 interface DocEntry {
   path: string;
@@ -142,6 +157,21 @@ export default function DocsPage() {
       if (selected) saveFile(selected, value);
     }, 1000);
   }, [selected, saveFile]);
+
+  // Cmd/Ctrl+S to save immediately (cancels the autosave timer)
+  useEffect(() => {
+    function handleSaveShortcut(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        if (selected && saveStatus !== 'saving') {
+          if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+          saveFile(selected, editContent);
+        }
+      }
+    }
+    window.addEventListener('keydown', handleSaveShortcut);
+    return () => window.removeEventListener('keydown', handleSaveShortcut);
+  }, [selected, editContent, saveStatus, saveFile]);
 
   const handleDelete = useCallback(async (filePath: string) => {
     if (!confirm('Move this file to trash?')) return;
@@ -306,8 +336,11 @@ export default function DocsPage() {
                             {doc.title}
                           </span>
                         </div>
-                        <span className="text-10 text-[var(--text-muted)] flex-shrink-0 group-hover:hidden">
-                          {doc.words.toLocaleString()}
+                        <span
+                          className="text-10 text-[var(--text-muted)] flex-shrink-0 group-hover:hidden tabular-nums"
+                          title={`${doc.words.toLocaleString()} words · modified ${new Date(doc.modified).toLocaleString()}`}
+                        >
+                          {relativeTime(doc.modified)}
                         </span>
                         <div className="relative hidden group-hover:block flex-shrink-0">
                           <button
@@ -361,13 +394,22 @@ export default function DocsPage() {
               </span>
               <div className="flex items-center gap-2">
                 {saveStatus === 'saved' && (
-                  <span className="text-11 text-[var(--success)]">Saved</span>
+                  <span className="flex items-center gap-1 text-11 text-[var(--success)]" title="All changes saved">
+                    <Check size={11} />
+                    Saved
+                  </span>
                 )}
                 {saveStatus === 'unsaved' && (
-                  <span className="text-11 text-[var(--warning)]">Unsaved</span>
+                  <span className="flex items-center gap-1 text-11 text-[var(--warning)]" title="Unsaved changes — autosave in 1s, or ⌘S to save now">
+                    <Circle size={9} fill="currentColor" />
+                    Unsaved
+                  </span>
                 )}
                 {saveStatus === 'saving' && (
-                  <span className="text-11 text-[var(--text-muted)]">Saving...</span>
+                  <span className="flex items-center gap-1 text-11 text-[var(--text-muted)]">
+                    <Spinner size={10} />
+                    Saving…
+                  </span>
                 )}
                 <Button
                   variant="ghost"
