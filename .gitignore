@@ -18,3 +18,8 @@ data/
 
 # local config
 .mcp.json
+
+# playwright
+/test-results/
+/playwright-report/
+/playwright/.cache/
