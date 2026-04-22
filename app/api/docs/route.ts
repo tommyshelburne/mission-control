@@ -5,9 +5,10 @@ import path from 'path';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+// Listing only walks projects. Memories have their own page (/memories) — including
+// them here was making the docs sidebar redundant with that view.
 const ALLOWED_DIRS = [
   '/home/claw/.openclaw/workspace/projects',
-  '/home/claw/.openclaw/workspace/memory',
 ];
 
 const SKIP_DIRS = new Set(['node_modules', '.git', 'archive']);
