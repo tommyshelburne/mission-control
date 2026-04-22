@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { Badge, EmptyState, Spinner } from '@/components/ui';
-import { Briefcase } from 'lucide-react';
+import { Badge, EmptyState, Spinner, Button } from '@/components/ui';
+import { Briefcase, ExternalLink } from 'lucide-react';
+
+const TICKTICK_URL = 'https://ticktick.com';
 
 /* ---------- types ---------- */
 
@@ -86,17 +88,28 @@ export default function JobsPage() {
     <>
       <PageHeader
         title="Jobs"
-        subtitle={subtitle}
+        subtitle={subtitle ? `${subtitle} · sourced from TickTick` : 'sourced from TickTick'}
         actions={
-          loading ? (
-            <Spinner size={14} />
-          ) : (
-            <Badge
-              label={`${jobs.length} leads`}
-              variant="neutral"
-              size="xs"
-            />
-          )
+          <div className="flex items-center gap-2">
+            {loading ? (
+              <Spinner size={14} />
+            ) : (
+              <Badge
+                label={`${jobs.length} leads`}
+                variant="neutral"
+                size="xs"
+              />
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={<ExternalLink size={12} />}
+              onClick={() => window.open(TICKTICK_URL, '_blank')}
+              title="Open TickTick (jobs are managed there)"
+            >
+              TickTick
+            </Button>
+          </div>
         }
       />
 
@@ -110,7 +123,19 @@ export default function JobsPage() {
         <EmptyState
           icon={<Briefcase size={32} />}
           title="No active job leads"
-          subtitle="Add them in TickTick"
+          subtitle={
+            <>
+              Add them in{' '}
+              <a
+                href={TICKTICK_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[var(--accent)] hover:underline"
+              >
+                TickTick
+              </a>
+            </>
+          }
         />
       )}
 
@@ -138,10 +163,10 @@ export default function JobsPage() {
                 {grouped[col]?.map((job) => (
                   <div
                     key={job.id}
-                    className={`relative bg-[var(--bg-card)] border border-[var(--border)] rounded-md hover:border-[var(--border-mid)] hover:bg-[var(--bg-elevated)] flex flex-col ${
+                    className={`group relative bg-[var(--bg-card)] border border-[var(--border)] rounded-md hover:border-[var(--border-mid)] hover:bg-[var(--bg-elevated)] flex flex-col gap-1 ${
                       job.url ? 'cursor-pointer' : 'cursor-default'
                     }`}
-                    style={{ padding: '12px 14px', height: 96, borderRadius: 'var(--radius-md)', transition: 'all 80ms' }}
+                    style={{ padding: '10px 12px', minHeight: 64, borderRadius: 'var(--radius-md)', transition: 'all 80ms' }}
                     onClick={() => {
                       if (job.url) window.open(job.url, '_blank');
                     }}
@@ -151,11 +176,21 @@ export default function JobsPage() {
                       <span
                         className="absolute rounded-full"
                         style={{ top: 10, right: 10, width: 7, height: 7, backgroundColor: '#dc2626' }}
+                        title="High priority"
+                      />
+                    )}
+
+                    {/* external-link affordance — visible on hover */}
+                    {job.url && (
+                      <ExternalLink
+                        size={10}
+                        className="absolute text-[var(--text-muted)] opacity-0 group-hover:opacity-100 transition-opacity"
+                        style={{ bottom: 8, right: 10 }}
                       />
                     )}
 
                     {/* row 1: company */}
-                    <div className="text-[var(--text-primary)] overflow-hidden" style={{ fontSize: 13, fontWeight: 500, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                    <div className="text-[var(--text-primary)] overflow-hidden" style={{ fontSize: 13, fontWeight: 500, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', lineHeight: 1.3 }}>
                       {job.company}
                     </div>
 
@@ -166,30 +201,32 @@ export default function JobsPage() {
                       </div>
                     )}
 
-                    {/* row 3: tags + date */}
-                    <div className="flex items-center gap-1.5 mt-auto">
-                      {job.tags.slice(0, 3).map((tag) => (
-                        <span
-                          key={tag}
-                          style={{
-                            fontSize: 10,
-                            background: 'var(--bg-elevated)',
-                            color: 'var(--text-muted)',
-                            borderRadius: 'var(--radius-xs)',
-                            padding: '2px 6px',
-                          }}
-                          className="whitespace-nowrap"
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                      <span className="flex-1" />
-                      {job.dueDate && (
-                        <span style={{ fontSize: 11 }} className="text-[var(--text-muted)] whitespace-nowrap">
-                          {formatShortDate(job.dueDate)}
-                        </span>
-                      )}
-                    </div>
+                    {/* row 3: tags + date — only render if there's content */}
+                    {(job.tags.length > 0 || job.dueDate) && (
+                      <div className="flex items-center gap-1.5 mt-auto pt-1">
+                        {job.tags.slice(0, 3).map((tag) => (
+                          <span
+                            key={tag}
+                            style={{
+                              fontSize: 10,
+                              background: 'var(--bg-elevated)',
+                              color: 'var(--text-muted)',
+                              borderRadius: 'var(--radius-xs)',
+                              padding: '2px 6px',
+                            }}
+                            className="whitespace-nowrap"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                        <span className="flex-1" />
+                        {job.dueDate && (
+                          <span style={{ fontSize: 11 }} className="text-[var(--text-muted)] whitespace-nowrap pr-3">
+                            {formatShortDate(job.dueDate)}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
