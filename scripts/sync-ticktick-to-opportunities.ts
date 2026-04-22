@@ -80,7 +80,7 @@ async function main() {
       @tick_tick_id, @title, @company, @stage, 'ticktick', @notes,
       @next_action_date, datetime('now')
     )
-    ON CONFLICT(tick_tick_id) DO UPDATE SET
+    ON CONFLICT(tick_tick_id) WHERE tick_tick_id IS NOT NULL DO UPDATE SET
       title = excluded.title,
       company = excluded.company,
       stage = excluded.stage,
