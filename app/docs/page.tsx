@@ -30,6 +30,7 @@ interface DocEntry {
   size: number;
   words: number;
   modified: number;
+  archived: boolean;
 }
 
 interface DocContent {
@@ -64,6 +65,7 @@ export default function DocsPage() {
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
   const [newFileInput, setNewFileInput] = useState(false);
   const [newFileName, setNewFileName] = useState('');
+  const [archivedExpanded, setArchivedExpanded] = useState(false);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -240,6 +242,7 @@ export default function DocsPage() {
           size: 0,
           words: 0,
           modified: Date.now(),
+          archived: false,
         };
         setDocs((prev) => [newDoc, ...prev]);
         setNewFileInput(false);
@@ -260,8 +263,86 @@ export default function DocsPage() {
     });
   };
 
-  const groups = groupByCategory(filtered);
+  const activeDocs = filtered.filter((d) => !d.archived);
+  const archivedDocs = filtered.filter((d) => d.archived);
+  const activeGroups = groupByCategory(activeDocs);
+  const archivedGroups = groupByCategory(archivedDocs);
   const breadcrumb = selected ? selected.replace('/home/claw/.openclaw/workspace/', '') : '';
+
+  const renderCategory = (category: string, items: DocEntry[]) => (
+    <div key={category}>
+      <button
+        onClick={() => toggleGroup(category)}
+        className="w-full flex items-center gap-1 text-10 uppercase tracking-wider text-[var(--text-muted)] font-medium px-3 py-2 mt-2 sticky top-0 bg-[var(--bg-surface)] cursor-pointer hover:text-[var(--text-secondary)]"
+      >
+        {collapsedGroups.has(category) ? (
+          <ChevronRight size={10} />
+        ) : (
+          <ChevronDown size={10} />
+        )}
+        {category}
+        <span className="ml-auto text-[var(--text-muted)]">{items.length}</span>
+      </button>
+      {!collapsedGroups.has(category) &&
+        items.map((doc) => (
+          <div
+            key={doc.path}
+            className="group relative h-9 flex items-center justify-between px-3 cursor-pointer hover:bg-[var(--bg-hover)]"
+            style={{
+              background: selected === doc.path ? 'var(--bg-elevated)' : undefined,
+              borderLeft: selected === doc.path
+                ? '2px solid var(--accent)'
+                : '2px solid transparent',
+              transition: 'background 80ms ease',
+            }}
+            onClick={() => loadFile(doc.path)}
+          >
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <FileText size={12} className="text-[var(--text-muted)] flex-shrink-0" />
+              <span className="text-12 text-[var(--text-primary)] truncate">
+                {doc.title}
+              </span>
+            </div>
+            <span
+              className="text-10 text-[var(--text-muted)] flex-shrink-0 group-hover:hidden tabular-nums"
+              title={`${doc.words.toLocaleString()} words · modified ${new Date(doc.modified).toLocaleString()}`}
+            >
+              {relativeTime(doc.modified)}
+            </span>
+            <div className="relative hidden group-hover:block flex-shrink-0">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMenuOpen(menuOpen === doc.path ? null : doc.path);
+                }}
+                className="w-6 h-6 flex items-center justify-center rounded hover:bg-[var(--bg-elevated)] text-[var(--text-muted)]"
+              >
+                <MoreHorizontal size={12} />
+              </button>
+              {menuOpen === doc.path && (
+                <div
+                  ref={menuRef}
+                  className="absolute right-0 top-6 z-50 w-32 py-1 bg-[var(--bg-elevated)] border border-[var(--border)] rounded-md shadow-[var(--shadow-md)]"
+                >
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDownload(doc.path); }}
+                    className="w-full text-left px-3 py-1.5 text-12 text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                  >
+                    Download
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDelete(doc.path); }}
+                    className="w-full text-left px-3 py-1.5 text-12 text-[var(--danger)] hover:bg-[var(--danger-dim)]"
+                  >
+                    Delete
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+    </div>
+  );
 
   return (
     <>
@@ -321,80 +402,27 @@ export default function DocsPage() {
                 No files found
               </div>
             ) : (
-              Array.from(groups.entries()).map(([category, items]) => (
-                <div key={category}>
-                  <button
-                    onClick={() => toggleGroup(category)}
-                    className="w-full flex items-center gap-1 text-10 uppercase tracking-wider text-[var(--text-muted)] font-medium px-3 py-2 mt-2 sticky top-0 bg-[var(--bg-surface)] cursor-pointer hover:text-[var(--text-secondary)]"
-                  >
-                    {collapsedGroups.has(category) ? (
-                      <ChevronRight size={10} />
-                    ) : (
-                      <ChevronDown size={10} />
-                    )}
-                    {category}
-                    <span className="ml-auto text-[var(--text-muted)]">{items.length}</span>
-                  </button>
-                  {!collapsedGroups.has(category) &&
-                    items.map((doc) => (
-                      <div
-                        key={doc.path}
-                        className="group relative h-9 flex items-center justify-between px-3 cursor-pointer hover:bg-[var(--bg-hover)]"
-                        style={{
-                          background: selected === doc.path ? 'var(--bg-elevated)' : undefined,
-                          borderLeft: selected === doc.path
-                            ? '2px solid var(--accent)'
-                            : '2px solid transparent',
-                          transition: 'background 80ms ease',
-                        }}
-                        onClick={() => loadFile(doc.path)}
-                      >
-                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                          <FileText size={12} className="text-[var(--text-muted)] flex-shrink-0" />
-                          <span className="text-12 text-[var(--text-primary)] truncate">
-                            {doc.title}
-                          </span>
-                        </div>
-                        <span
-                          className="text-10 text-[var(--text-muted)] flex-shrink-0 group-hover:hidden tabular-nums"
-                          title={`${doc.words.toLocaleString()} words · modified ${new Date(doc.modified).toLocaleString()}`}
-                        >
-                          {relativeTime(doc.modified)}
-                        </span>
-                        <div className="relative hidden group-hover:block flex-shrink-0">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setMenuOpen(menuOpen === doc.path ? null : doc.path);
-                            }}
-                            className="w-6 h-6 flex items-center justify-center rounded hover:bg-[var(--bg-elevated)] text-[var(--text-muted)]"
-                          >
-                            <MoreHorizontal size={12} />
-                          </button>
-                          {menuOpen === doc.path && (
-                            <div
-                              ref={menuRef}
-                              className="absolute right-0 top-6 z-50 w-32 py-1 bg-[var(--bg-elevated)] border border-[var(--border)] rounded-md shadow-[var(--shadow-md)]"
-                            >
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleDownload(doc.path); }}
-                                className="w-full text-left px-3 py-1.5 text-12 text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-                              >
-                                Download
-                              </button>
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleDelete(doc.path); }}
-                                className="w-full text-left px-3 py-1.5 text-12 text-[var(--danger)] hover:bg-[var(--danger-dim)]"
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              ))
+              <>
+                {Array.from(activeGroups.entries()).map(([category, items]) =>
+                  renderCategory(category, items)
+                )}
+                {archivedDocs.length > 0 && (
+                  <div className="mt-4 border-t border-[var(--border)] pt-1">
+                    <button
+                      onClick={() => setArchivedExpanded((v) => !v)}
+                      className="w-full flex items-center gap-1 text-10 uppercase tracking-wider text-[var(--text-muted)] font-medium px-3 py-2 mt-1 cursor-pointer hover:text-[var(--text-secondary)]"
+                    >
+                      {archivedExpanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                      Archived
+                      <span className="ml-auto text-[var(--text-muted)]">{archivedDocs.length}</span>
+                    </button>
+                    {archivedExpanded &&
+                      Array.from(archivedGroups.entries()).map(([category, items]) =>
+                        renderCategory(category, items)
+                      )}
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
