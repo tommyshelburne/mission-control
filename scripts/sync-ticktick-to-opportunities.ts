@@ -5,8 +5,13 @@
  * - Keyed on tick_tick_id (unique partial index from migration 005).
  * - Idempotent: re-running updates existing rows, inserts new ones, leaves
  *   manually-created opportunities (tick_tick_id IS NULL) untouched.
- * - Conservative: never deletes; if a TickTick task is archived, the synced
- *   row gets stage='closed' but stays in the DB.
+ * - Skips TickTick's "Applying" column — that's a research/watch bucket on
+ *   Tommy's side (contains templates like "📋 [MODÈLE]" and watch queries like
+ *   "🔍 Veille hebdo"), not actual applications. MC's Pipeline is for engaged
+ *   opportunities, so Applying tasks stay TickTick-only.
+ * - Prunes tick_tick-sourced rows whose TickTick task has moved out of an
+ *   eligible column (deleted, or moved to Applying). Manual-source and
+ *   Archived-source rows are preserved. Archived → stage='closed' (kept).
  *
  * Usage:
  *   npx tsx scripts/sync-ticktick-to-opportunities.ts
@@ -24,15 +29,16 @@ const DB_PATH = '/home/claw/.openclaw/workspace/mission-control/data/mc.db';
 
 type Stage = 'applied' | 'screening' | 'interview' | 'offer' | 'closed';
 
-function mapStage(status: TickTickColumn): Stage {
+function mapStage(status: TickTickColumn): Stage | null {
   switch (status) {
+    case 'Applying':
+      return null;
     case 'Interview':
       return 'interview';
     case 'Offer':
       return 'offer';
     case 'Archived':
       return 'closed';
-    case 'Applying':
     case 'Applied':
     default:
       return 'applied';
@@ -48,13 +54,18 @@ async function main() {
     process.exit(1);
   }
 
+  const eligible = result.jobs.filter((j) => mapStage(j.status) !== null);
+  const skipped = result.jobs.length - eligible.length;
+
   if (dry) {
     console.log(
       JSON.stringify({
         ok: true,
         dry: true,
         total: result.jobs.length,
-        preview: result.jobs.slice(0, 3).map((j) => ({
+        eligible: eligible.length,
+        skipped_applying: skipped,
+        preview: eligible.slice(0, 3).map((j) => ({
           id: j.id,
           company: j.company,
           role: j.role,
@@ -91,22 +102,35 @@ async function main() {
 
   const existsQ = db.prepare('SELECT 1 FROM opportunities WHERE tick_tick_id = ?');
 
+  const pruneQ = db.prepare(
+    `DELETE FROM opportunities
+     WHERE source = 'ticktick'
+       AND tick_tick_id IS NOT NULL
+       AND tick_tick_id NOT IN (SELECT value FROM json_each(?))`,
+  );
+
   let added = 0;
   let updated = 0;
+  let pruned = 0;
   const tx = db.transaction(() => {
-    for (const job of result.jobs) {
+    for (const job of eligible) {
       const existed = !!existsQ.get(job.id);
+      const stage = mapStage(job.status);
+      if (stage === null) continue;
       upsert.run({
         tick_tick_id: job.id,
         title: job.role || job.company,
         company: job.company,
-        stage: mapStage(job.status),
+        stage,
         notes: job.tags.length > 0 ? `tags: ${job.tags.join(', ')}` : '',
         next_action_date: job.dueDate || null,
       });
       if (existed) updated++;
       else added++;
     }
+    const eligibleIds = JSON.stringify(eligible.map((j) => j.id));
+    const res = pruneQ.run(eligibleIds);
+    pruned = res.changes;
   });
   tx();
 
@@ -115,8 +139,11 @@ async function main() {
       ok: true,
       dbPath: path.basename(DB_PATH),
       total: result.jobs.length,
+      eligible: eligible.length,
+      skipped_applying: skipped,
       added,
       updated,
+      pruned,
     }),
   );
 
