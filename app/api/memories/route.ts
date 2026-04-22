@@ -19,10 +19,17 @@ export async function GET() {
         const content = fs.readFileSync(filePath, 'utf-8');
         const stat = fs.statSync(filePath);
         const words = content.split(/\s+/).filter(Boolean).length;
+        // Preview: strip markdown leading chars (#, -, *, >, whitespace) and clip
+        const preview = content
+          .replace(/^[\s#*\->]+/gm, '')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 120);
         return {
           date: f.replace('.md', ''),
           size: stat.size,
           words,
+          preview,
         };
       })
       .sort((a, b) => b.date.localeCompare(a.date));
