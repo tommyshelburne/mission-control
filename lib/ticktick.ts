@@ -1,6 +1,5 @@
 import fs from 'node:fs';
-
-const TOKEN_PATH = '/home/claw/.openclaw/workspace/.ticktick-token.json';
+import { TICKTICK_TOKEN as TOKEN_PATH } from './paths';
 const TICKTICK_API = 'https://api.ticktick.com/open/v1';
 const JOB_PROJECT_NAME_MATCH = "Recherche d'emploi";
 

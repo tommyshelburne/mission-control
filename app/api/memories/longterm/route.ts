@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
-
-const MEMORY_MD = '/home/claw/.openclaw/workspace/MEMORY.md';
+import { MEMORY_MD } from '@/lib/paths';
 
 export async function GET() {
   try {

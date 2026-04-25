@@ -1,16 +1,14 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { PROJECTS_DIR, SCOUT_RESEARCH_DIR } from '@/lib/paths';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 // Listing only walks projects. Memories have their own page (/memories) — including
 // them here was making the docs sidebar redundant with that view.
-const ALLOWED_DIRS = [
-  '/home/claw/.openclaw/workspace/projects',
-  '/home/claw/.openclaw/workspace/agents/scout/research',
-];
+const ALLOWED_DIRS = [PROJECTS_DIR, SCOUT_RESEARCH_DIR];
 
 const SKIP_DIRS = new Set(['node_modules', '.git', 'archive', '.archive']);
 
@@ -58,7 +56,7 @@ export async function GET() {
   const docs: DocEntry[] = [];
 
   for (const dir of ALLOWED_DIRS) {
-    const recursive = dir.endsWith('/projects');
+    const recursive = dir === PROJECTS_DIR;
     const files = walkDir(dir, recursive);
 
     for (const filePath of files) {

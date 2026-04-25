@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 import { NextResponse } from 'next/server';
+import { ESCALATIONS_MD, CRON_JOBS_JSON } from '@/lib/paths';
 import { getDb } from '@/lib/db';
 import { readFileSync, existsSync } from 'fs';
 import { execSync } from 'child_process';
@@ -35,7 +36,7 @@ interface CronJob {
 }
 
 function parseEscalations(): Escalation[] {
-  const filePath = '/home/claw/.openclaw/workspace/ESCALATIONS.md';
+  const filePath = ESCALATIONS_MD;
   if (!existsSync(filePath)) return [];
 
   const content = readFileSync(filePath, 'utf-8');
@@ -84,7 +85,7 @@ function parseEscalations(): Escalation[] {
 }
 
 function parseCronJobs(): CronJob[] {
-  const filePath = '/home/claw/.openclaw/cron/jobs.json';
+  const filePath = CRON_JOBS_JSON;
   if (!existsSync(filePath)) return [];
 
   try {

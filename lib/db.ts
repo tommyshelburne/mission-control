@@ -1,7 +1,6 @@
 import Database from 'better-sqlite3';
 import { runMigrations } from './migrations';
-
-const DB_PATH = '/home/claw/.openclaw/workspace/mission-control/data/mc.db';
+import { DB_PATH } from './paths';
 
 let _db: Database.Database | null = null;
 

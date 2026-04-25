@@ -2,10 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 
-const ALLOWED_DIRS = [
-  '/home/claw/.openclaw/workspace/projects',
-  '/home/claw/.openclaw/workspace/agents/scout/research',
-];
+import { PROJECTS_DIR, SCOUT_RESEARCH_DIR } from '@/lib/paths';
+
+const ALLOWED_DIRS = [PROJECTS_DIR, SCOUT_RESEARCH_DIR];
 
 function isAllowed(filePath: string): boolean {
   if (filePath.includes('..')) return false;

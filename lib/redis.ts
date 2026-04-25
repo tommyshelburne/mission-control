@@ -1,9 +1,10 @@
 import Redis from 'ioredis';
 import { readFileSync } from 'fs';
+import { SECRETS_FILE } from './paths';
 
 function getRedisPassword(): string {
   try {
-    const secrets = JSON.parse(readFileSync('/home/claw/.openclaw/secrets.json', 'utf-8')) as Record<string, string>;
+    const secrets = JSON.parse(readFileSync(SECRETS_FILE, 'utf-8')) as Record<string, string>;
     return secrets.redis_password ?? '';
   } catch {
     return '';

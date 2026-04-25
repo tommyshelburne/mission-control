@@ -335,13 +335,15 @@ export default function DocsPage() {
   const handleNewFile = useCallback(async () => {
     const name = newFileName.trim();
     if (!name) return;
-    const filename = name.endsWith('.md') ? name : name + '.md';
-    const filePath = `/home/claw/.openclaw/workspace/projects/notes/${filename}`;
     try {
       const res = await fetch('/api/docs/file', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: filePath, content: `# ${name.replace(/\.md$/, '')}\n\n` }),
+        body: JSON.stringify({
+          name,
+          category: 'notes',
+          content: `# ${name.replace(/\.md$/, '')}\n\n`,
+        }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -377,7 +379,9 @@ export default function DocsPage() {
   const archivedDocs = filtered.filter((d) => d.archived);
   const activeGroups = groupByCategory(activeDocs);
   const archivedGroups = groupByCategory(archivedDocs);
-  const breadcrumb = selected ? selected.replace('/home/claw/.openclaw/workspace/', '') : '';
+  // Show only the last few path segments so the breadcrumb stays readable
+  // regardless of the absolute root configured via OPENCLAW_ROOT.
+  const breadcrumb = selected ? selected.split('/').filter(Boolean).slice(-3).join('/') : '';
 
   // Most-recent modified time per category — surfaced in collapsed group headers
   // so a quick glance shows whether a category has fresh activity.

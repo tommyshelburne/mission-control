@@ -8,15 +8,15 @@
  * post-completion heartbeats. The MC dashboard's 300s staleness guard handles
  * showing agents as offline between runs.
  *
- * State: /home/claw/.openclaw/cron/mc-heartbeat-sync-state.json tracks the
+ * State: <CRON_DIR>/mc-heartbeat-sync-state.json tracks the
  * last-processed `ts` (ms) per jobId so we only emit heartbeats for new entries.
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { CRON_DIR, CRON_JOBS_JSON } from '../lib/paths';
 
-const CRON_DIR = '/home/claw/.openclaw/cron';
 const RUNS_DIR = path.join(CRON_DIR, 'runs');
-const JOBS_FILE = path.join(CRON_DIR, 'jobs.json');
+const JOBS_FILE = CRON_JOBS_JSON;
 const STATE_FILE = path.join(CRON_DIR, 'mc-heartbeat-sync-state.json');
 const MC_URL = process.env.MC_URL ?? 'http://localhost:3000';
 

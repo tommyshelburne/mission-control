@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-
-const MEMORY_DIR = '/home/claw/.openclaw/workspace/memory';
+import { MEMORY_DIR } from '@/lib/paths';
 
 export async function GET(request: Request, props: { params: Promise<{ date: string }> }) {
   const params = await props.params;

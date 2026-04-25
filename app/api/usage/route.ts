@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { execSync } from 'child_process';
+import { USAGE_SCRIPT } from '@/lib/paths';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -37,7 +38,7 @@ function readLocalUsage(): {
 } {
   try {
     const raw = execSync(
-      'python3 /home/claw/.openclaw/scripts/usage/report.py --days 2 --json',
+      `python3 ${USAGE_SCRIPT} --days 2 --json`,
       { encoding: 'utf8', timeout: 5000 },
     );
     const parsed = JSON.parse(raw) as ReportOutput;

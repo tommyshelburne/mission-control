@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { PROJECTS_DIR, MEMORY_DIR, SCOUT_RESEARCH_DIR, NOTES_DIR } from '@/lib/paths';
 
-const ALLOWED_DIRS = [
-  '/home/claw/.openclaw/workspace/projects',
-  '/home/claw/.openclaw/workspace/memory',
-  '/home/claw/.openclaw/workspace/agents/scout/research',
-];
+const ALLOWED_DIRS = [PROJECTS_DIR, MEMORY_DIR, SCOUT_RESEARCH_DIR];
 
 function isAllowed(filePath: string): boolean {
   if (filePath.includes('..')) return false;
@@ -56,15 +53,39 @@ export async function PUT(request: NextRequest) {
   }
 }
 
+// Accepts either:
+//   {name: "foo", category?: "notes"}  — server constructs path under PROJECTS_DIR/<category>
+//   {path: "/abs/path/foo.md"}         — caller supplies an absolute path (must pass isAllowed)
+// The name/category form is preferred so clients don't carry workspace absolute paths.
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const filePath = body.path;
-    if (!filePath || !isAllowed(filePath)) {
-      return NextResponse.json({ error: 'Invalid or disallowed path' }, { status: 400 });
+
+    let resolved: string;
+    if (typeof body.name === 'string' && body.name.trim()) {
+      const raw = body.name.trim();
+      if (raw.includes('/') || raw.includes('\\') || raw.includes('..')) {
+        return NextResponse.json({ error: 'Invalid filename' }, { status: 400 });
+      }
+      const safeName = raw.endsWith('.md') ? raw : raw + '.md';
+      const category = typeof body.category === 'string' && body.category.trim() ? body.category.trim() : 'notes';
+      if (category.includes('/') || category.includes('\\') || category.includes('..')) {
+        return NextResponse.json({ error: 'Invalid category' }, { status: 400 });
+      }
+      const targetDir = category === 'notes' ? NOTES_DIR : path.join(PROJECTS_DIR, category);
+      resolved = path.resolve(targetDir, safeName);
+      if (!isAllowed(resolved)) {
+        return NextResponse.json({ error: 'Resolved path is outside allowed roots' }, { status: 400 });
+      }
+    } else if (typeof body.path === 'string') {
+      if (!isAllowed(body.path)) {
+        return NextResponse.json({ error: 'Invalid or disallowed path' }, { status: 400 });
+      }
+      resolved = path.resolve(body.path);
+    } else {
+      return NextResponse.json({ error: 'Provide either name or path' }, { status: 400 });
     }
 
-    const resolved = path.resolve(filePath);
     const dir = path.dirname(resolved);
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(resolved, body.content || '', 'utf-8');
