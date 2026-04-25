@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { publishEvent } from '@/lib/events';
 
 const VALID_ENTITY_TYPES = ['task', 'project', 'agent', 'system'] as const;
 const VALID_ACTIONS = ['created', 'updated', 'status_changed', 'commented', 'deleted', 'heartbeat'] as const;
@@ -77,5 +78,6 @@ export async function POST(request: Request) {
   `).run(entity_type, entity_id ?? null, action, actor.trim(), detailStr);
 
   const row = db.prepare('SELECT * FROM activity_log WHERE id = ?').get(result.lastInsertRowid);
+  await publishEvent('activity', row);
   return NextResponse.json({ activity: row }, { status: 201 });
 }

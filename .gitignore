@@ -23,3 +23,6 @@ data/
 /test-results/
 /playwright-report/
 /playwright/.cache/
+
+# Internal-only docs (not for public repo)
+docs/internal/

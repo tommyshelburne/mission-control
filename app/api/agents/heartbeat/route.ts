@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { getRedis } from '@/lib/redis';
+import { publishEvent } from '@/lib/events';
 
 const VALID_STATUSES = ['idle', 'busy', 'offline'] as const;
 type AgentStatus = (typeof VALID_STATUSES)[number];
@@ -10,10 +11,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const { name, status, currentTaskId, currentActivity, model } = body as {
+  const { name, status, currentTaskId, currentTaskTitle, currentActivity, model } = body as {
     name?: string;
     status?: string;
     currentTaskId?: number | null;
+    currentTaskTitle?: string;
     currentActivity?: string;
     model?: string;
   };
@@ -25,37 +27,45 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: `status must be one of ${VALID_STATUSES.join(', ')}` }, { status: 400 });
   }
 
-  const db = getDb();
+  const agentName = name.trim();
+  const nowMs = Date.now();
+  const redis = getRedis();
+  const key = `agent:${agentName}:state`;
 
-  const upsert = db.prepare(`
-    INSERT INTO agents (name, status, current_task_id, current_activity, model, last_heartbeat, updated_at)
-    VALUES (@name, @status, @currentTaskId, @currentActivity, @model, datetime('now'), datetime('now'))
-    ON CONFLICT(name) DO UPDATE SET
-      status           = excluded.status,
-      current_task_id  = excluded.current_task_id,
-      current_activity = COALESCE(excluded.current_activity, agents.current_activity),
-      model            = COALESCE(NULLIF(excluded.model, ''), agents.model),
-      last_heartbeat   = excluded.last_heartbeat,
-      updated_at       = excluded.updated_at
-  `);
+  // Read existing hash so we can preserve model/current_activity if caller omits them
+  const existing = await redis.hgetall(key);
 
-  upsert.run({
-    name: name.trim(),
+  const resolvedModel =
+    model && model.trim() ? model.trim() : (existing.model ?? '');
+  const resolvedActivity =
+    currentActivity !== undefined ? currentActivity : (existing.current_activity ?? '');
+  const resolvedTaskTitle =
+    currentTaskTitle !== undefined ? currentTaskTitle : (existing.current_task_title ?? '');
+
+  await redis.hset(key, {
+    name: agentName,
     status,
-    currentTaskId: currentTaskId ?? null,
-    currentActivity: currentActivity ?? '',
-    model: model ?? '',
+    last_heartbeat_ms: String(nowMs),
+    current_task_id: currentTaskId != null ? String(currentTaskId) : '',
+    current_task_title: resolvedTaskTitle,
+    current_activity: resolvedActivity,
+    model: resolvedModel,
   });
 
-  db.prepare(`
-    INSERT INTO activity_log (entity_type, entity_id, action, actor, detail)
-    VALUES ('agent', (SELECT id FROM agents WHERE name = ?), 'heartbeat', ?, ?)
-  `).run(
-    name.trim(),
-    name.trim(),
-    JSON.stringify({ status, currentTaskId: currentTaskId ?? null, currentActivity: currentActivity ?? '' }),
-  );
+  // Sorted set for fast range queries (score = ms timestamp)
+  await redis.zadd('agent:heartbeats', nowMs, agentName);
 
-  const agent = db.prepare('SELECT * FROM agents WHERE name = ?').get(name.trim());
+  const agent = {
+    name: agentName,
+    status,
+    last_heartbeat_ms: nowMs,
+    current_task_id: currentTaskId ?? null,
+    current_task_title: resolvedTaskTitle,
+    current_activity: resolvedActivity,
+    model: resolvedModel,
+  };
+
+  await publishEvent('agent_status', agent);
+
   return NextResponse.json({ agent });
 }

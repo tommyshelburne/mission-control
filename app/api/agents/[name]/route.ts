@@ -1,46 +1,52 @@
 import { NextResponse } from 'next/server';
+import { getRedis } from '@/lib/redis';
 import { getDb } from '@/lib/db';
 
 const STALE_THRESHOLD_SEC = 300;
 
 export async function GET(_request: Request, props: { params: Promise<{ name: string }> }) {
   const params = await props.params;
-  const db = getDb();
-  const name = params.name;
+  const agentName = params.name;
+  const redis = getRedis();
 
-  const agent = db
-    .prepare(
-      `SELECT a.*,
-         CASE WHEN a.last_heartbeat IS NULL
-              THEN NULL
-              ELSE CAST((julianday('now') - julianday(a.last_heartbeat)) * 86400 AS INTEGER)
-         END AS staleness_seconds,
-         t.title AS current_task_title
-       FROM agents a
-       LEFT JOIN tasks t ON t.id = a.current_task_id
-       WHERE a.name = ?`,
-    )
-    .get(name) as (Record<string, unknown> & { staleness_seconds: number | null; status: string }) | undefined;
+  const hash = await redis.hgetall(`agent:${agentName}:state`);
 
-  if (!agent) {
+  if (!hash || !hash.name) {
     return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
   }
 
+  const nowMs = Date.now();
+  const lastHeartbeatMs = hash.last_heartbeat_ms ? Number(hash.last_heartbeat_ms) : null;
+  const stalenessSec = lastHeartbeatMs != null ? Math.floor((nowMs - lastHeartbeatMs) / 1000) : null;
   const effective_status =
-    agent.staleness_seconds === null || agent.staleness_seconds > STALE_THRESHOLD_SEC ? 'offline' : agent.status;
+    stalenessSec === null || stalenessSec > STALE_THRESHOLD_SEC ? 'offline' : hash.status;
 
+  const agent = {
+    name: hash.name,
+    status: hash.status ?? 'offline',
+    last_heartbeat_ms: lastHeartbeatMs,
+    current_task_id: hash.current_task_id ? Number(hash.current_task_id) : null,
+    current_task_title: hash.current_task_title ?? null,
+    current_activity: hash.current_activity ?? '',
+    model: hash.model ?? '',
+    staleness_seconds: stalenessSec,
+    effective_status,
+  };
+
+  // recent_activity still reads from SQLite activity_log — not in scope for this port
+  const db = getDb();
   const recent_activity = db
     .prepare(
       `SELECT id, entity_type, entity_id, action, actor, detail, created_at
        FROM activity_log
-       WHERE actor = ? OR (entity_type = 'agent' AND entity_id = ?)
+       WHERE actor = ?
        ORDER BY created_at DESC
        LIMIT 50`,
     )
-    .all(name, (agent as any).id);
+    .all(agentName);
 
   return NextResponse.json({
-    agent: { ...agent, effective_status },
+    agent,
     recent_activity,
     stale_threshold_seconds: STALE_THRESHOLD_SEC,
   });

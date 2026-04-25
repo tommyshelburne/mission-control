@@ -5,6 +5,7 @@ import path from 'path';
 const ALLOWED_DIRS = [
   '/home/claw/.openclaw/workspace/projects',
   '/home/claw/.openclaw/workspace/memory',
+  '/home/claw/.openclaw/workspace/agents/scout/research',
 ];
 
 function isAllowed(filePath: string): boolean {

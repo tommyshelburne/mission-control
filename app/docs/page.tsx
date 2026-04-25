@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
-import { FileText, Eye, EyeOff, Download, MoreHorizontal, Plus, ChevronDown, ChevronRight, Check, Circle } from 'lucide-react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { FileText, Eye, EyeOff, Download, MoreHorizontal, Plus, ChevronDown, ChevronRight, Check, Circle, Clock, FolderTree, Calendar, Archive, X, CheckSquare, Square } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button, EmptyState, Spinner } from '@/components/ui';
 import { CodeMirrorEditor } from '@/components/docs/CodeMirrorEditor';
@@ -22,6 +22,36 @@ function relativeTime(ms: number): string {
   if (weeks < 5) return `${weeks}w`;
   return new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
+
+type ViewMode = 'category' | 'date';
+type AgeFilter = 'all' | '7d' | '30d' | '90d';
+
+const AGE_FILTER_MS: Record<AgeFilter, number | null> = {
+  all: null,
+  '7d': 7 * 24 * 60 * 60 * 1000,
+  '30d': 30 * 24 * 60 * 60 * 1000,
+  '90d': 90 * 24 * 60 * 60 * 1000,
+};
+
+const RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const RECENT_SHELF_MAX = 8;
+
+function dateBucket(ms: number): string {
+  const now = new Date();
+  const then = new Date(ms);
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const diffDays = Math.floor((startOfToday - new Date(then.getFullYear(), then.getMonth(), then.getDate()).getTime()) / dayMs);
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays < 7) return 'This week';
+  if (diffDays < 14) return 'Last week';
+  if (diffDays < 30) return 'This month';
+  if (diffDays < 90) return 'Last 90 days';
+  return 'Older';
+}
+
+const DATE_BUCKET_ORDER = ['Today', 'Yesterday', 'This week', 'Last week', 'This month', 'Last 90 days', 'Older'];
 
 interface DocEntry {
   path: string;
@@ -50,6 +80,17 @@ function groupByCategory(docs: DocEntry[]): Map<string, DocEntry[]> {
   return map;
 }
 
+function groupByDateBucket(docs: DocEntry[]): Map<string, DocEntry[]> {
+  const map = new Map<string, DocEntry[]>();
+  for (const doc of docs) {
+    const bucket = dateBucket(doc.modified);
+    const group = map.get(bucket) || [];
+    group.push(doc);
+    map.set(bucket, group);
+  }
+  return map;
+}
+
 export default function DocsPage() {
   const [docs, setDocs] = useState<DocEntry[]>([]);
   const [filtered, setFiltered] = useState<DocEntry[]>([]);
@@ -66,9 +107,34 @@ export default function DocsPage() {
   const [newFileInput, setNewFileInput] = useState(false);
   const [newFileName, setNewFileName] = useState('');
   const [archivedExpanded, setArchivedExpanded] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('category');
+  const [ageFilter, setAgeFilter] = useState<AgeFilter>('all');
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
+  const [archiving, setArchiving] = useState(false);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Restore persisted view + filter prefs
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem('mc.docs.viewMode');
+      if (v === 'category' || v === 'date') setViewMode(v);
+      const a = localStorage.getItem('mc.docs.ageFilter');
+      if (a === 'all' || a === '7d' || a === '30d' || a === '90d') setAgeFilter(a);
+    } catch {
+      // localStorage disabled
+    }
+  }, []);
+
+  const persistViewMode = useCallback((next: ViewMode) => {
+    setViewMode(next);
+    try { localStorage.setItem('mc.docs.viewMode', next); } catch { /* ignore */ }
+  }, []);
+  const persistAgeFilter = useCallback((next: AgeFilter) => {
+    setAgeFilter(next);
+    try { localStorage.setItem('mc.docs.ageFilter', next); } catch { /* ignore */ }
+  }, []);
 
   // Load docs list
   useEffect(() => {
@@ -89,17 +155,17 @@ export default function DocsPage() {
     load();
   }, []);
 
-  // Filter by search
+  // Filter by search + age
   useEffect(() => {
-    if (!search.trim()) {
-      setFiltered(docs);
-      return;
-    }
-    const q = search.toLowerCase();
-    setFiltered(docs.filter((d) =>
-      d.title.toLowerCase().includes(q) || d.category.toLowerCase().includes(q)
-    ));
-  }, [search, docs]);
+    const window = AGE_FILTER_MS[ageFilter];
+    const cutoff = window === null ? 0 : Date.now() - window;
+    const q = search.trim().toLowerCase();
+    setFiltered(docs.filter((d) => {
+      if (window !== null && d.modified < cutoff) return false;
+      if (!q) return true;
+      return d.title.toLowerCase().includes(q) || d.category.toLowerCase().includes(q);
+    }));
+  }, [search, docs, ageFilter]);
 
   // Close menu on outside click
   useEffect(() => {
@@ -222,6 +288,50 @@ export default function DocsPage() {
     setMenuOpen(null);
   }, []);
 
+  const toggleSelected = useCallback((filePath: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setSelectedPaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(filePath)) next.delete(filePath);
+      else next.add(filePath);
+      return next;
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => setSelectedPaths(new Set()), []);
+
+  const handleBulkArchive = useCallback(async () => {
+    if (selectedPaths.size === 0 || archiving) return;
+    const paths = Array.from(selectedPaths);
+    if (!confirm(`Archive ${paths.length} file${paths.length === 1 ? '' : 's'}? They'll move to .archive/ and disappear from the sidebar.`)) return;
+    setArchiving(true);
+    try {
+      const res = await fetch('/api/docs/archive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paths }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const archivedSet = new Set<string>(data.archived);
+        setDocs((prev) => prev.filter((d) => !archivedSet.has(d.path)));
+        if (selected && archivedSet.has(selected)) {
+          setSelected(null);
+          setContent(null);
+        }
+        setSelectedPaths(new Set());
+        if (data.failed?.length) {
+          alert(`Archived ${data.archived.length} of ${paths.length}. ${data.failed.length} failed — check console.`);
+          console.error('Bulk archive failures:', data.failed);
+        }
+      }
+    } catch (err) {
+      console.error('Bulk archive error:', err);
+    } finally {
+      setArchiving(false);
+    }
+  }, [selectedPaths, archiving, selected]);
+
   const handleNewFile = useCallback(async () => {
     const name = newFileName.trim();
     if (!name) return;
@@ -269,78 +379,146 @@ export default function DocsPage() {
   const archivedGroups = groupByCategory(archivedDocs);
   const breadcrumb = selected ? selected.replace('/home/claw/.openclaw/workspace/', '') : '';
 
-  const renderCategory = (category: string, items: DocEntry[]) => (
-    <div key={category}>
-      <button
-        onClick={() => toggleGroup(category)}
-        className="w-full flex items-center gap-1 text-10 uppercase tracking-wider text-[var(--text-muted)] font-medium px-3 py-2 mt-2 sticky top-0 bg-[var(--bg-surface)] cursor-pointer hover:text-[var(--text-secondary)]"
+  // Most-recent modified time per category — surfaced in collapsed group headers
+  // so a quick glance shows whether a category has fresh activity.
+  const mostRecentByCategory = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const d of filtered) {
+      const cur = map.get(d.category) ?? 0;
+      if (d.modified > cur) map.set(d.category, d.modified);
+    }
+    return map;
+  }, [filtered]);
+
+  // Recent shelf — last 7 days across all categories, capped, only in category view
+  const recentShelf = useMemo(() => {
+    if (viewMode !== 'category') return [];
+    const cutoff = Date.now() - RECENT_WINDOW_MS;
+    return activeDocs
+      .filter((d) => d.modified >= cutoff)
+      .sort((a, b) => b.modified - a.modified)
+      .slice(0, RECENT_SHELF_MAX);
+  }, [activeDocs, viewMode]);
+
+  // Date-bucket groupings for date view (active only — archived stays in the
+  // collapsed Archived section regardless of view mode for clarity)
+  const dateGroups = useMemo(() => groupByDateBucket(activeDocs), [activeDocs]);
+
+  const selectionMode = selectedPaths.size > 0;
+
+  const renderRow = (doc: DocEntry, opts?: { showCategory?: boolean }) => {
+    const isSelected = selectedPaths.has(doc.path);
+    const showCategory = opts?.showCategory ?? false;
+    return (
+      <div
+        key={doc.path}
+        className="group relative h-9 flex items-center justify-between px-3 cursor-pointer hover:bg-[var(--bg-hover)]"
+        style={{
+          background: selected === doc.path ? 'var(--bg-elevated)' : isSelected ? 'var(--bg-hover)' : undefined,
+          borderLeft: selected === doc.path
+            ? '2px solid var(--accent)'
+            : '2px solid transparent',
+          transition: 'background 80ms ease',
+        }}
+        onClick={() => loadFile(doc.path)}
       >
-        {collapsedGroups.has(category) ? (
-          <ChevronRight size={10} />
-        ) : (
-          <ChevronDown size={10} />
-        )}
-        {category}
-        <span className="ml-auto text-[var(--text-muted)]">{items.length}</span>
-      </button>
-      {!collapsedGroups.has(category) &&
-        items.map((doc) => (
-          <div
-            key={doc.path}
-            className="group relative h-9 flex items-center justify-between px-3 cursor-pointer hover:bg-[var(--bg-hover)]"
-            style={{
-              background: selected === doc.path ? 'var(--bg-elevated)' : undefined,
-              borderLeft: selected === doc.path
-                ? '2px solid var(--accent)'
-                : '2px solid transparent',
-              transition: 'background 80ms ease',
-            }}
-            onClick={() => loadFile(doc.path)}
-          >
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <FileText size={12} className="text-[var(--text-muted)] flex-shrink-0" />
-              <span className="text-12 text-[var(--text-primary)] truncate">
-                {doc.title}
-              </span>
-            </div>
-            <span
-              className="text-10 text-[var(--text-muted)] flex-shrink-0 group-hover:hidden tabular-nums"
-              title={`${doc.words.toLocaleString()} words · modified ${new Date(doc.modified).toLocaleString()}`}
-            >
-              {relativeTime(doc.modified)}
+        <button
+          onClick={(e) => toggleSelected(doc.path, e)}
+          className={`w-4 h-4 flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] flex-shrink-0 mr-1 ${
+            selectionMode || isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+          }`}
+          title={isSelected ? 'Deselect' : 'Select'}
+        >
+          {isSelected ? <CheckSquare size={12} className="text-[var(--accent)]" /> : <Square size={12} />}
+        </button>
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <FileText size={12} className="text-[var(--text-muted)] flex-shrink-0" />
+          <span className="text-12 text-[var(--text-primary)] truncate">
+            {doc.title}
+          </span>
+          {showCategory && (
+            <span className="text-10 text-[var(--text-muted)] flex-shrink-0">
+              · {doc.category}
             </span>
-            <div className="relative hidden group-hover:block flex-shrink-0">
+          )}
+        </div>
+        <span
+          className="text-10 text-[var(--text-muted)] flex-shrink-0 group-hover:hidden tabular-nums"
+          title={`${doc.words.toLocaleString()} words · modified ${new Date(doc.modified).toLocaleString()}`}
+        >
+          {relativeTime(doc.modified)}
+        </span>
+        <div className="relative hidden group-hover:block flex-shrink-0">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setMenuOpen(menuOpen === doc.path ? null : doc.path);
+            }}
+            className="w-6 h-6 flex items-center justify-center rounded hover:bg-[var(--bg-elevated)] text-[var(--text-muted)]"
+          >
+            <MoreHorizontal size={12} />
+          </button>
+          {menuOpen === doc.path && (
+            <div
+              ref={menuRef}
+              className="absolute right-0 top-6 z-50 w-32 py-1 bg-[var(--bg-elevated)] border border-[var(--border)] rounded-md shadow-[var(--shadow-md)]"
+            >
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setMenuOpen(menuOpen === doc.path ? null : doc.path);
-                }}
-                className="w-6 h-6 flex items-center justify-center rounded hover:bg-[var(--bg-elevated)] text-[var(--text-muted)]"
+                onClick={(e) => { e.stopPropagation(); handleDownload(doc.path); }}
+                className="w-full text-left px-3 py-1.5 text-12 text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
               >
-                <MoreHorizontal size={12} />
+                Download
               </button>
-              {menuOpen === doc.path && (
-                <div
-                  ref={menuRef}
-                  className="absolute right-0 top-6 z-50 w-32 py-1 bg-[var(--bg-elevated)] border border-[var(--border)] rounded-md shadow-[var(--shadow-md)]"
-                >
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDownload(doc.path); }}
-                    className="w-full text-left px-3 py-1.5 text-12 text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-                  >
-                    Download
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDelete(doc.path); }}
-                    className="w-full text-left px-3 py-1.5 text-12 text-[var(--danger)] hover:bg-[var(--danger-dim)]"
-                  >
-                    Delete
-                  </button>
-                </div>
-              )}
+              <button
+                onClick={(e) => { e.stopPropagation(); handleDelete(doc.path); }}
+                className="w-full text-left px-3 py-1.5 text-12 text-[var(--danger)] hover:bg-[var(--danger-dim)]"
+              >
+                Delete
+              </button>
             </div>
-          </div>
-        ))}
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderCategory = (category: string, items: DocEntry[]) => {
+    const recent = mostRecentByCategory.get(category);
+    return (
+      <div key={category}>
+        <button
+          onClick={() => toggleGroup(category)}
+          className="w-full flex items-center gap-1 text-10 uppercase tracking-wider text-[var(--text-muted)] font-medium px-3 py-2 mt-2 sticky top-0 bg-[var(--bg-surface)] cursor-pointer hover:text-[var(--text-secondary)]"
+        >
+          {collapsedGroups.has(category) ? (
+            <ChevronRight size={10} />
+          ) : (
+            <ChevronDown size={10} />
+          )}
+          {category}
+          <span className="ml-auto flex items-center gap-2 text-[var(--text-muted)]">
+            {recent !== undefined && (
+              <span className="tabular-nums normal-case tracking-normal" title={`Most recent: ${new Date(recent).toLocaleString()}`}>
+                {relativeTime(recent)}
+              </span>
+            )}
+            <span>{items.length}</span>
+          </span>
+        </button>
+        {!collapsedGroups.has(category) && items.map((doc) => renderRow(doc))}
+      </div>
+    );
+  };
+
+  const renderDateBucket = (bucket: string, items: DocEntry[]) => (
+    <div key={bucket}>
+      <div className="w-full flex items-center gap-1 text-10 uppercase tracking-wider text-[var(--text-muted)] font-medium px-3 py-2 mt-2 sticky top-0 bg-[var(--bg-surface)]">
+        {bucket}
+        <span className="ml-auto text-[var(--text-muted)]">{items.length}</span>
+      </div>
+      {items
+        .sort((a, b) => b.modified - a.modified)
+        .map((doc) => renderRow(doc, { showCategory: true }))}
     </div>
   );
 
@@ -373,6 +551,75 @@ export default function DocsPage() {
             </Button>
           </div>
 
+          {/* View / filter bar */}
+          <div className="h-9 flex items-center px-3 gap-2 border-b border-[var(--border)] flex-shrink-0 bg-[var(--bg-surface)]">
+            <div className="flex items-center bg-[var(--bg-elevated)] rounded-md overflow-hidden">
+              <button
+                onClick={() => persistViewMode('category')}
+                className={`px-2 h-6 flex items-center gap-1 text-11 ${
+                  viewMode === 'category'
+                    ? 'bg-[var(--bg-hover)] text-[var(--text-primary)]'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                }`}
+                title="Group by category"
+              >
+                <FolderTree size={10} />
+                Category
+              </button>
+              <button
+                onClick={() => persistViewMode('date')}
+                className={`px-2 h-6 flex items-center gap-1 text-11 ${
+                  viewMode === 'date'
+                    ? 'bg-[var(--bg-hover)] text-[var(--text-primary)]'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                }`}
+                title="Group by date"
+              >
+                <Calendar size={10} />
+                Date
+              </button>
+            </div>
+            <select
+              value={ageFilter}
+              onChange={(e) => persistAgeFilter(e.target.value as AgeFilter)}
+              className="bg-[var(--bg-elevated)] border-none rounded-md px-2 h-6 text-11 text-[var(--text-secondary)] outline-none cursor-pointer"
+              title="Filter by age"
+            >
+              <option value="all">All time</option>
+              <option value="7d">Last 7 days</option>
+              <option value="30d">Last 30 days</option>
+              <option value="90d">Last 90 days</option>
+            </select>
+          </div>
+
+          {/* Bulk action bar (visible when files are selected) */}
+          {selectionMode && (
+            <div className="h-9 flex items-center px-3 gap-2 border-b border-[var(--border)] flex-shrink-0 bg-[var(--bg-elevated)]">
+              <span className="text-11 text-[var(--text-secondary)] tabular-nums">
+                {selectedPaths.size} selected
+              </span>
+              <div className="ml-auto flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={<Archive size={11} />}
+                  onClick={handleBulkArchive}
+                  disabled={archiving}
+                  title="Move selected to .archive/ (hidden from sidebar; files preserved on disk)"
+                >
+                  {archiving ? 'Archiving…' : 'Archive'}
+                </Button>
+                <button
+                  onClick={clearSelection}
+                  className="w-6 h-6 flex items-center justify-center rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)]"
+                  title="Clear selection"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* New file input */}
           {newFileInput && (
             <div className="px-3 py-2 border-b border-[var(--border)]">
@@ -403,9 +650,25 @@ export default function DocsPage() {
               </div>
             ) : (
               <>
-                {Array.from(activeGroups.entries()).map(([category, items]) =>
-                  renderCategory(category, items)
+                {viewMode === 'category' && recentShelf.length > 0 && (
+                  <div>
+                    <div className="w-full flex items-center gap-1 text-10 uppercase tracking-wider text-[var(--text-muted)] font-medium px-3 py-2 mt-1 sticky top-0 bg-[var(--bg-surface)]">
+                      <Clock size={10} />
+                      Recent
+                      <span className="ml-auto">{recentShelf.length}</span>
+                    </div>
+                    {recentShelf.map((doc) => renderRow(doc, { showCategory: true }))}
+                    <div className="border-t border-[var(--border)] mx-3 mt-2" />
+                  </div>
                 )}
+                {viewMode === 'category' &&
+                  Array.from(activeGroups.entries()).map(([category, items]) =>
+                    renderCategory(category, items)
+                  )}
+                {viewMode === 'date' &&
+                  DATE_BUCKET_ORDER
+                    .filter((b) => dateGroups.has(b))
+                    .map((b) => renderDateBucket(b, dateGroups.get(b)!))}
                 {archivedDocs.length > 0 && (
                   <div className="mt-4 border-t border-[var(--border)] pt-1">
                     <button

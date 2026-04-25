@@ -9,13 +9,14 @@ export const revalidate = 0;
 // them here was making the docs sidebar redundant with that view.
 const ALLOWED_DIRS = [
   '/home/claw/.openclaw/workspace/projects',
+  '/home/claw/.openclaw/workspace/agents/scout/research',
 ];
 
-const SKIP_DIRS = new Set(['node_modules', '.git', 'archive']);
+const SKIP_DIRS = new Set(['node_modules', '.git', 'archive', '.archive']);
 
 // Categories surfaced under a collapsed "Archived" section in the UI.
 // Non-destructive — files stay on disk; this is purely presentation.
-const ARCHIVED_CATEGORIES = new Set(['ai-utah-100', 'herald', 'warden']);
+const ARCHIVED_CATEGORIES = new Set(['ai-utah-100', 'herald', 'warden', 'mission-control']);
 
 interface DocEntry {
   path: string;

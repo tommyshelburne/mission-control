@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { publishEvent } from '@/lib/events';
 
 const VALID_TYPES = ['info', 'warning', 'action_required', 'agent_update'] as const;
 
@@ -58,5 +59,6 @@ export async function POST(request: Request) {
   `).run(title.trim(), text, type, source_agent ?? null, action_url ?? null);
 
   const row = db.prepare('SELECT * FROM notifications WHERE id = ?').get(result.lastInsertRowid);
+  await publishEvent('notification', row);
   return NextResponse.json({ notification: row }, { status: 201 });
 }
