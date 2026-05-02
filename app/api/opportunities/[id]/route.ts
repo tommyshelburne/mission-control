@@ -14,7 +14,8 @@ export async function PATCH(request: Request, props: { params: Promise<{ id: str
   const body = await request.json().catch(() => ({}));
   const db = getDb();
 
-  const existing = db.prepare('SELECT * FROM opportunities WHERE id = ?').get(id) as Record<string, any> | undefined;
+  type OpportunityRow = { stage: string; applied_at: string | null; company: string; title: string; [key: string]: unknown };
+  const existing = db.prepare('SELECT * FROM opportunities WHERE id = ?').get(id) as OpportunityRow | undefined;
   if (!existing) return NextResponse.json({ error: 'Opportunity not found' }, { status: 404 });
 
   if (body.stage && !(STAGES as readonly string[]).includes(body.stage)) {

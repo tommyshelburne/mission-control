@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
+import { useNow } from '@/lib/hooks';
 import { Activity as ActivityIcon, AlertCircle, Calendar, UserPlus, Edit, Trash2, CheckSquare, Radio } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Badge, Spinner } from '@/components/ui';
@@ -115,6 +116,7 @@ function summarizeAction(row: ActivityRow): string {
 /* ---------- component ---------- */
 
 export default function HomePage() {
+  const now = useNow();
   const { data: activityData, isLoading } = useQuery<{ activity: ActivityRow[] }>({
     queryKey: ['activity-home'],
     queryFn: async () => (await fetch('/api/activity?limit=100')).json(),
@@ -139,9 +141,8 @@ export default function HomePage() {
       .map((t) => ({ ...t, dueMs: new Date(t.due_date!).getTime() }))
       .filter((t) => !isNaN(t.dueMs))
       .sort((a, b) => a.dueMs - b.dueMs);
-    const now = Date.now();
     return list.filter((t) => t.dueMs <= now + 7 * 86400_000).slice(0, 6);
-  }, [tasksData]);
+  }, [tasksData, now]);
 
   const activityByDay = useMemo(() => {
     const rows = activityData?.activity ?? [];
@@ -199,7 +200,7 @@ export default function HomePage() {
               style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}
             >
               {dueSoon.map((t, i) => {
-                const overdue = t.dueMs < Date.now();
+                const overdue = t.dueMs < now;
                 return (
                   <Link
                     key={t.id}

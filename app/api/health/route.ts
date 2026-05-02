@@ -9,7 +9,7 @@ export async function GET() {
   const migrations = db
     .prepare('SELECT name FROM _migrations ORDER BY id')
     .all()
-    .map((r: any) => r.name as string);
+    .map((r) => (r as { name: string }).name);
 
   return NextResponse.json({
     status: 'ok',

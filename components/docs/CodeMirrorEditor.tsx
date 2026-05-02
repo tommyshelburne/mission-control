@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { EditorView } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
 import { markdown } from '@codemirror/lang-markdown';
@@ -45,7 +45,9 @@ export function CodeMirrorEditor({ content, onChange }: CodeMirrorEditorProps) {
   const onChangeRef = useRef(onChange);
   const isExternalUpdate = useRef(false);
 
-  onChangeRef.current = onChange;
+  useLayoutEffect(() => {
+    onChangeRef.current = onChange;
+  });
 
   useEffect(() => {
     if (!containerRef.current) return;

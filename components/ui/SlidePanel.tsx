@@ -27,19 +27,19 @@ export function SlidePanel({ open, onClose, title, children }: SlidePanelProps) 
     }
   }, [open, onClose]);
 
+  // Derived state: compute transitions during render to avoid setState-in-effect
+  if (open && !mounted) { setMounted(true); setAnimating(false); }
+  if (!open && mounted && !animating) { setAnimating(true); }
+
+  // Once animating starts, schedule unmount after the CSS transition completes
   useEffect(() => {
-    if (open) {
-      setMounted(true);
+    if (!animating) return;
+    const t = setTimeout(() => {
+      setMounted(false);
       setAnimating(false);
-    } else if (mounted) {
-      setAnimating(true);
-      const t = setTimeout(() => {
-        setMounted(false);
-        setAnimating(false);
-      }, DURATION);
-      return () => clearTimeout(t);
-    }
-  }, [open]);
+    }, DURATION);
+    return () => clearTimeout(t);
+  }, [animating]);
 
   if (!mounted) return null;
 

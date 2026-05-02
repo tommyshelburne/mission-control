@@ -353,8 +353,12 @@ export default function ProjectsPage() {
   }, []);
 
   useEffect(() => {
-    fetchProjects();
-  }, [fetchProjects]);
+    fetch('/api/projects')
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then((data: { projects: Project[] }) => setProjects(data.projects))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
 
   const handleCreate = async (form: ProjectFormData) => {
     setSaving(true);

@@ -23,10 +23,6 @@ export function InlineEdit({ value, onSave, multiline, placeholder = 'Click to e
     }
   }, [editing]);
 
-  useEffect(() => {
-    setDraft(value);
-  }, [value]);
-
   const save = () => {
     const trimmed = draft.trim();
     if (trimmed && trimmed !== value) {
@@ -51,7 +47,7 @@ export function InlineEdit({ value, onSave, multiline, placeholder = 'Click to e
     return (
       <div
         className={`inline-edit-view cursor-pointer ${textSize} ${textWeight} ${value ? 'text-[var(--text-primary)]' : 'text-[var(--text-placeholder)]'} hover:text-[var(--text-primary)] transition-colors duration-[80ms]`}
-        onClick={() => setEditing(true)}
+        onClick={() => { setDraft(value); setEditing(true); }}
       >
         {value || placeholder}
       </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Badge, EmptyState, Spinner, Button } from '@/components/ui';
 import { Briefcase, ExternalLink } from 'lucide-react';
@@ -54,26 +54,21 @@ export default function JobsPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
-  const fetchJobs = useCallback(async () => {
-    try {
-      setLoading(true);
-      const res = await fetch('/api/jobs');
-      const data: JobsResponse = await res.json();
-      setJobs(data.jobs || []);
-      setColumns(data.columns || []);
-      setLastUpdated(data.lastUpdated || '');
-      setError(data.error || '');
-    } catch {
-      setError('Failed to fetch jobs');
-      setColumns(['Applying', 'Applied', 'Interview', 'Offer', 'Archived']);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    fetchJobs();
-  }, [fetchJobs]);
+    fetch('/api/jobs')
+      .then(r => r.json() as Promise<JobsResponse>)
+      .then(data => {
+        setJobs(data.jobs || []);
+        setColumns(data.columns || []);
+        setLastUpdated(data.lastUpdated || '');
+        setError(data.error || '');
+      })
+      .catch(() => {
+        setError('Failed to fetch jobs');
+        setColumns(['Applying', 'Applied', 'Interview', 'Offer', 'Archived']);
+      })
+      .finally(() => setLoading(false));
+  }, []);
 
   const grouped = columns.reduce<Record<string, JobCard[]>>((acc, col) => {
     acc[col] = jobs.filter((j) => j.status === col);

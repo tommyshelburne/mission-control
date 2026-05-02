@@ -38,6 +38,12 @@ if (already) {
   process.exit(0);
 }
 
+type V3Project = { id: number; name: string; description: string | null; status: string | null; color: string | null; goal: string | null; due_date: string | null; created_at: string };
+type V3Task = { id: number; title: string; description: string | null; status: string | null; priority: string | null; assignee: string | null; project: string; due_date: string | null; created_at: string; updated_at: string; position: number | null };
+type V3Event = { task_id: number; event_type: string; detail: string | null; created_at: string };
+type ProjectBreakdown = { id: number; name: string; status: string; n: number };
+type ActionBreakdown = { action: string; n: number };
+
 // 3. Data migration in one transaction
 const tx = db.transaction(() => {
   /* ---------- projects ---------- */
@@ -45,7 +51,7 @@ const tx = db.transaction(() => {
   // Then adjust per addendum §3.1.
   const v3Projects = db
     .prepare('SELECT id, name, description, status, color, goal, due_date, created_at FROM projects')
-    .all() as any[];
+    .all() as V3Project[];
 
   const insertProject = db.prepare(`
     INSERT INTO projects_v4 (id, name, description, status, color, goal, due_date, icon, sort_order, created_at, updated_at)
@@ -104,7 +110,7 @@ const tx = db.transaction(() => {
   /* ---------- tasks ---------- */
   const v3Tasks = db
     .prepare(`SELECT id, title, description, status, priority, assignee, project, due_date, created_at, updated_at, position FROM tasks`)
-    .all() as any[];
+    .all() as V3Task[];
 
   const insertTask = db.prepare(`
     INSERT INTO tasks_v4 (
@@ -153,7 +159,7 @@ const tx = db.transaction(() => {
   `);
   const v3Events = db
     .prepare('SELECT task_id, event_type, detail, created_at FROM task_events ORDER BY id')
-    .all() as any[];
+    .all() as V3Event[];
   for (const e of v3Events) {
     insertActivity.run({
       entity_id: e.task_id,
@@ -193,18 +199,18 @@ console.log(`  notifications:  ${counts('notifications')}`);
 
 const projectBreakdown = db
   .prepare(`SELECT p.id, p.name, p.status, COUNT(t.id) n FROM projects_v4 p LEFT JOIN tasks_v4 t ON t.project_id = p.id GROUP BY p.id ORDER BY n DESC`)
-  .all();
+  .all() as ProjectBreakdown[];
 console.log('\n[migrate] === PROJECT → TASK COUNTS ===');
-for (const r of projectBreakdown as any[]) console.log(`  ${r.id.toString().padEnd(5)} ${r.name.padEnd(24)} ${r.status.padEnd(10)} ${r.n}`);
+for (const r of projectBreakdown) console.log(`  ${r.id.toString().padEnd(5)} ${r.name.padEnd(24)} ${r.status.padEnd(10)} ${r.n}`);
 
-const nullProjectTasks = counts('tasks_v4') - (projectBreakdown as any[]).reduce((s, r) => s + r.n, 0);
+const nullProjectTasks = counts('tasks_v4') - projectBreakdown.reduce((s, r) => s + r.n, 0);
 console.log(`  (no project_id)          ${nullProjectTasks}`);
 
 const actionBreakdown = db
   .prepare(`SELECT action, COUNT(*) n FROM activity_log GROUP BY action ORDER BY n DESC`)
-  .all();
+  .all() as ActionBreakdown[];
 console.log('\n[migrate] === ACTIVITY_LOG ACTION BREAKDOWN ===');
-for (const r of actionBreakdown as any[]) console.log(`  ${r.action.padEnd(18)} ${r.n}`);
+for (const r of actionBreakdown) console.log(`  ${r.action.padEnd(18)} ${r.n}`);
 
 console.log(`\n[migrate] done. unmapped=${result.unmapped}`);
 db.close();
