@@ -61,6 +61,17 @@ export async function PATCH(request: Request, props: { params: Promise<{ id: str
     return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
   }
 
+  // v2 §14 M7: when assignee changes, null dispatch state so the v2 router
+  // re-fires the task on its next tick. Without this, a rejected/reassigned
+  // task would stay claimed in mc.db forever and never reach the new owner.
+  if ('assignee' in body) {
+    const current = db.prepare('SELECT assignee FROM tasks WHERE id = ?').get(id) as { assignee: string } | undefined;
+    if (current && current.assignee !== body.assignee) {
+      updates.push('dispatched_at = NULL');
+      updates.push('dispatch_envelope_id = NULL');
+    }
+  }
+
   updates.push("updated_at = datetime('now')");
   values.push(id);
 

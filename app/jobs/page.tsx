@@ -28,6 +28,37 @@ interface JobsResponse {
   error?: string;
 }
 
+interface AppliedEntry {
+  key: string;
+  company: string;
+  title: string;
+  applied_date: string;
+  source: string;
+  outcome: string;
+  url?: string;
+  notes?: string;
+  evidence?: string[];
+}
+
+interface AppliedResponse {
+  entries: AppliedEntry[];
+  lastUpdated?: string | null;
+  count: number;
+  error?: string;
+}
+
+type View = 'pipeline' | 'applied';
+
+const OUTCOME_VARIANT: Record<string, 'success' | 'danger' | 'warning' | 'neutral' | 'accent' | 'muted'> = {
+  open: 'accent',
+  in_progress: 'neutral',
+  interviewing: 'warning',
+  offer: 'success',
+  rejected: 'danger',
+  ghosted: 'muted',
+  withdrew: 'muted',
+};
+
 /* ---------- helpers ---------- */
 
 function formatShortDate(dateStr: string): string {
@@ -53,6 +84,10 @@ export default function JobsPage() {
   const [lastUpdated, setLastUpdated] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [view, setView] = useState<View>('pipeline');
+  const [applied, setApplied] = useState<AppliedEntry[]>([]);
+  const [appliedUpdated, setAppliedUpdated] = useState<string | null>(null);
+  const [appliedError, setAppliedError] = useState('');
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -71,35 +106,70 @@ export default function JobsPage() {
     }
   }, []);
 
+  const fetchApplied = useCallback(async () => {
+    try {
+      const res = await fetch('/api/jobs/applied');
+      const data: AppliedResponse = await res.json();
+      setApplied(data.entries || []);
+      setAppliedUpdated(data.lastUpdated ?? null);
+      setAppliedError(data.error || '');
+    } catch {
+      setAppliedError('Failed to fetch applied ledger');
+    }
+  }, []);
+
   useEffect(() => {
     fetchJobs();
-  }, [fetchJobs]);
+    fetchApplied();
+  }, [fetchJobs, fetchApplied]);
 
   const grouped = columns.reduce<Record<string, JobCard[]>>((acc, col) => {
     acc[col] = jobs.filter((j) => j.status === col);
     return acc;
   }, {});
 
-  const subtitle = lastUpdated
-    ? `Updated ${formatTimestamp(lastUpdated)}`
-    : undefined;
+  const subtitle =
+    view === 'pipeline'
+      ? lastUpdated
+        ? `Updated ${formatTimestamp(lastUpdated)} · sourced from TickTick`
+        : 'sourced from TickTick'
+      : appliedUpdated
+        ? `Updated ${formatShortDate(appliedUpdated)} · master ledger (warden dedup source)`
+        : 'master ledger (warden dedup source)';
+
+  const tabBtn = (key: View, label: string, count: number) => (
+    <button
+      key={key}
+      onClick={() => setView(key)}
+      className="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-12"
+      style={{
+        background:
+          view === key ? 'var(--bg-elevated)' : 'transparent',
+        color:
+          view === key
+            ? 'var(--text-primary)'
+            : 'var(--text-muted)',
+        border: '1px solid',
+        borderColor:
+          view === key ? 'var(--border-mid)' : 'transparent',
+        transition: 'all 80ms',
+      }}
+    >
+      {label}
+      <Badge label={String(count)} variant="neutral" size="xs" />
+    </button>
+  );
 
   return (
     <>
       <PageHeader
         title="Jobs"
-        subtitle={subtitle ? `${subtitle} · sourced from TickTick` : 'sourced from TickTick'}
+        subtitle={subtitle}
         actions={
           <div className="flex items-center gap-2">
-            {loading ? (
-              <Spinner size={14} />
-            ) : (
-              <Badge
-                label={`${jobs.length} leads`}
-                variant="neutral"
-                size="xs"
-              />
-            )}
+            {tabBtn('pipeline', 'Pipeline', jobs.length)}
+            {tabBtn('applied', 'Applied', applied.length)}
+            {loading && view === 'pipeline' && <Spinner size={14} />}
             <Button
               variant="ghost"
               size="sm"
@@ -113,13 +183,121 @@ export default function JobsPage() {
         }
       />
 
-      {error && (
+      {view === 'pipeline' && error && (
         <div className="mx-6 mt-4 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4">
           <p className="text-12 text-[var(--text-secondary)]">{error}</p>
         </div>
       )}
 
-      {!loading && jobs.length === 0 && !error && (
+      {view === 'applied' && appliedError && (
+        <div className="mx-6 mt-4 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4">
+          <p className="text-12 text-[var(--text-secondary)]">{appliedError}</p>
+        </div>
+      )}
+
+      {view === 'applied' && (
+        <div className="flex-1 overflow-y-auto p-6">
+          {applied.length === 0 ? (
+            <EmptyState
+              icon={<Briefcase size={32} />}
+              title="No applications logged"
+              subtitle={
+                <span>
+                  Run{' '}
+                  <code className="rounded bg-[var(--bg-elevated)] px-1.5 py-0.5 text-11">
+                    backfill-applied.py --apply
+                  </code>{' '}
+                  in <code>projects/job-search/</code>
+                </span>
+              }
+            />
+          ) : (
+            <div className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-card)]">
+              <table className="w-full text-12">
+                <thead>
+                  <tr
+                    className="text-[var(--text-muted)]"
+                    style={{
+                      borderBottom: '1px solid var(--border)',
+                      fontSize: 11,
+                      letterSpacing: '0.06em',
+                    }}
+                  >
+                    <th className="px-4 py-2.5 text-left uppercase">Company</th>
+                    <th className="px-4 py-2.5 text-left uppercase">Role</th>
+                    <th className="px-4 py-2.5 text-left uppercase">Applied</th>
+                    <th className="px-4 py-2.5 text-left uppercase">Source</th>
+                    <th className="px-4 py-2.5 text-left uppercase">Outcome</th>
+                    <th className="px-4 py-2.5 text-left uppercase">Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {applied.map((entry) => {
+                    const variant =
+                      OUTCOME_VARIANT[entry.outcome] ?? 'neutral';
+                    return (
+                      <tr
+                        key={entry.key}
+                        className="hover:bg-[var(--bg-elevated)]"
+                        style={{ borderBottom: '1px solid var(--border)' }}
+                      >
+                        <td className="px-4 py-2.5 font-medium text-[var(--text-primary)]">
+                          {entry.url ? (
+                            <a
+                              href={entry.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="hover:text-[var(--accent)] hover:underline"
+                            >
+                              {entry.company}
+                            </a>
+                          ) : (
+                            entry.company
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 text-[var(--text-secondary)]">
+                          {entry.title || '—'}
+                        </td>
+                        <td className="px-4 py-2.5 text-[var(--text-secondary)] whitespace-nowrap">
+                          {formatShortDate(entry.applied_date)}
+                        </td>
+                        <td className="px-4 py-2.5 text-[var(--text-muted)]">
+                          {entry.source || '—'}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <Badge
+                            label={entry.outcome || 'open'}
+                            variant={variant}
+                            size="xs"
+                          />
+                        </td>
+                        <td
+                          className="px-4 py-2.5 text-[var(--text-muted)]"
+                          style={{ maxWidth: 320 }}
+                        >
+                          <div
+                            className="overflow-hidden text-ellipsis"
+                            style={{
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                            }}
+                            title={entry.notes || ''}
+                          >
+                            {entry.notes || ''}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {view === 'pipeline' && !loading && jobs.length === 0 && !error && (
         <EmptyState
           icon={<Briefcase size={32} />}
           title="No active job leads"
@@ -139,7 +317,7 @@ export default function JobsPage() {
         />
       )}
 
-      {(jobs.length > 0 || loading) && (
+      {view === 'pipeline' && (jobs.length > 0 || loading) && (
         <div className="flex flex-row gap-3 overflow-x-auto p-6 flex-1">
           {columns.map((col) => (
             <div
