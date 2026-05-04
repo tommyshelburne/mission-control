@@ -19,7 +19,7 @@ export function runMigrations(db: Database.Database): MigrationResult {
   `);
 
   const applied = new Set(
-    db.prepare('SELECT name FROM _migrations').all().map((r: any) => r.name as string),
+    db.prepare('SELECT name FROM _migrations').all().map((r) => (r as { name: string }).name),
   );
 
   const files = fs

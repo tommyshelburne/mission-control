@@ -181,7 +181,7 @@ describe('PATCH /api/tasks/[id]', () => {
       paramsOf({ id: '1' }),
     );
 
-    const row = db.prepare('SELECT * FROM tasks WHERE id = 1').get() as any;
+    const row = db.prepare('SELECT * FROM tasks WHERE id = 1').get() as { assignee: string; dispatched_at: string | null; dispatch_envelope_id: string | null };
     expect(row.assignee).toBe('rex');
     expect(row.dispatched_at).toBeNull();
     expect(row.dispatch_envelope_id).toBeNull();

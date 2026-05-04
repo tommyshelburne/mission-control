@@ -11,7 +11,7 @@ describe('test infrastructure', () => {
     const tables = db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
       .all()
-      .map((r: any) => r.name);
+      .map((r) => (r as { name: string }).name);
     expect(tables).toEqual(
       expect.arrayContaining(['tasks', 'projects', 'opportunities', 'docs', 'notifications', 'agents']),
     );

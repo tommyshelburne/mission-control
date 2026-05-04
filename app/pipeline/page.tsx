@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback, useRef, memo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNow } from '@/lib/hooks';
 import {
   DndContext, DragOverlay, PointerSensor, KeyboardSensor,
   useSensor, useSensors, useDroppable, closestCorners,
@@ -349,9 +350,10 @@ const SortableCard = memo(function SortableCard({ opp, onClick }: { opp: Opportu
 });
 
 function Card({ opp, isDragOverlay = false }: { opp: Opportunity; isDragOverlay?: boolean }) {
+  const now = useNow();
   const salary = formatSalary(opp.salary_min, opp.salary_max);
   const nextDate = relativeDate(opp.next_action_date);
-  const overdue = opp.next_action_date && new Date(opp.next_action_date).getTime() < Date.now();
+  const overdue = opp.next_action_date && new Date(opp.next_action_date).getTime() < now;
 
   return (
     <div

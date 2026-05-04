@@ -40,9 +40,9 @@ describe('GET /api/opportunities', () => {
 
     const { GET } = await loadRoute();
     const res = await GET(new Request('http://x/api/opportunities?stage=applied&q=acme'));
-    const body = await res.json();
+    const body = (await res.json()) as { opportunities: Array<{ stage: string }> };
     expect(body.opportunities).toHaveLength(2);
-    expect(body.opportunities.every((o: any) => o.stage === 'applied')).toBe(true);
+    expect(body.opportunities.every((o) => o.stage === 'applied')).toBe(true);
   });
 });
 
@@ -61,7 +61,7 @@ describe('POST /api/opportunities', () => {
     expect(body.opportunity).toMatchObject({ title: 'Senior FE', company: 'Acme', stage: 'applied' });
     expect(body.opportunity.applied_at).toBeTruthy();
 
-    const log = db.prepare("SELECT * FROM activity_log WHERE entity_type='project' ORDER BY id DESC LIMIT 1").get() as any;
+    const log = db.prepare("SELECT * FROM activity_log WHERE entity_type='project' ORDER BY id DESC LIMIT 1").get() as { action: string; detail: string };
     expect(log.action).toBe('created');
     expect(JSON.parse(log.detail)).toMatchObject({ kind: 'opportunity', title: 'Senior FE' });
   });

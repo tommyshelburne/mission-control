@@ -11,8 +11,8 @@ export function jsonRequest(url: string, init: RequestInit = {}): Request {
   });
 }
 
-export async function readJson(res: Response): Promise<any> {
-  return await res.json();
+export async function readJson<T = unknown>(res: Response): Promise<T> {
+  return (await res.json()) as T;
 }
 
 export function paramsOf<T extends Record<string, string>>(p: T): { params: Promise<T> } {

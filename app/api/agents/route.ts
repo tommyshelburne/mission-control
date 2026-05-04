@@ -3,16 +3,6 @@ import { getRedis } from '@/lib/redis';
 
 const STALE_THRESHOLD_SEC = 300;
 
-interface AgentHash {
-  name: string;
-  status: string;
-  last_heartbeat_ms: string;
-  current_task_id: string;
-  current_task_title: string;
-  current_activity: string;
-  model: string;
-}
-
 function buildAgent(hash: Record<string, string>) {
   const nowMs = Date.now();
   const lastHeartbeatMs = hash.last_heartbeat_ms ? Number(hash.last_heartbeat_ms) : null;

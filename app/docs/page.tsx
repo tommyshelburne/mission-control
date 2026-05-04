@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { useNow } from '@/lib/hooks';
 import { FileText, Eye, EyeOff, Download, MoreHorizontal, Plus, ChevronDown, ChevronRight, Check, Circle, Clock, FolderTree, Calendar, Archive, X, CheckSquare, Square } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button, EmptyState, Spinner } from '@/components/ui';
@@ -93,7 +94,6 @@ function groupByDateBucket(docs: DocEntry[]): Map<string, DocEntry[]> {
 
 export default function DocsPage() {
   const [docs, setDocs] = useState<DocEntry[]>([]);
-  const [filtered, setFiltered] = useState<DocEntry[]>([]);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
   const [content, setContent] = useState<DocContent | null>(null);
@@ -107,25 +107,17 @@ export default function DocsPage() {
   const [newFileInput, setNewFileInput] = useState(false);
   const [newFileName, setNewFileName] = useState('');
   const [archivedExpanded, setArchivedExpanded] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>('category');
-  const [ageFilter, setAgeFilter] = useState<AgeFilter>('all');
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    try { const v = localStorage.getItem('mc.docs.viewMode'); return (v === 'category' || v === 'date') ? v : 'category'; } catch { return 'category'; }
+  });
+  const [ageFilter, setAgeFilter] = useState<AgeFilter>(() => {
+    try { const a = localStorage.getItem('mc.docs.ageFilter'); return (a === 'all' || a === '7d' || a === '30d' || a === '90d') ? a : 'all'; } catch { return 'all'; }
+  });
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   const [archiving, setArchiving] = useState(false);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-
-  // Restore persisted view + filter prefs
-  useEffect(() => {
-    try {
-      const v = localStorage.getItem('mc.docs.viewMode');
-      if (v === 'category' || v === 'date') setViewMode(v);
-      const a = localStorage.getItem('mc.docs.ageFilter');
-      if (a === 'all' || a === '7d' || a === '30d' || a === '90d') setAgeFilter(a);
-    } catch {
-      // localStorage disabled
-    }
-  }, []);
 
   const persistViewMode = useCallback((next: ViewMode) => {
     setViewMode(next);
@@ -144,7 +136,6 @@ export default function DocsPage() {
         if (res.ok) {
           const data = await res.json();
           setDocs(data.docs);
-          setFiltered(data.docs);
         }
       } catch {
         // silently fail
@@ -154,18 +145,6 @@ export default function DocsPage() {
     }
     load();
   }, []);
-
-  // Filter by search + age
-  useEffect(() => {
-    const window = AGE_FILTER_MS[ageFilter];
-    const cutoff = window === null ? 0 : Date.now() - window;
-    const q = search.trim().toLowerCase();
-    setFiltered(docs.filter((d) => {
-      if (window !== null && d.modified < cutoff) return false;
-      if (!q) return true;
-      return d.title.toLowerCase().includes(q) || d.category.toLowerCase().includes(q);
-    }));
-  }, [search, docs, ageFilter]);
 
   // Close menu on outside click
   useEffect(() => {
@@ -375,10 +354,23 @@ export default function DocsPage() {
     });
   };
 
-  const activeDocs = filtered.filter((d) => !d.archived);
-  const archivedDocs = filtered.filter((d) => d.archived);
-  const activeGroups = groupByCategory(activeDocs);
-  const archivedGroups = groupByCategory(archivedDocs);
+  const now = useNow();
+
+  const filtered = useMemo(() => {
+    const ageWindow = AGE_FILTER_MS[ageFilter];
+    const cutoff = ageWindow === null ? 0 : now - ageWindow;
+    const q = search.trim().toLowerCase();
+    return docs.filter((d) => {
+      if (ageWindow !== null && d.modified < cutoff) return false;
+      if (!q) return true;
+      return d.title.toLowerCase().includes(q) || d.category.toLowerCase().includes(q);
+    });
+  }, [docs, search, ageFilter, now]);
+
+  const activeDocs = useMemo(() => filtered.filter((d) => !d.archived), [filtered]);
+  const archivedDocs = useMemo(() => filtered.filter((d) => d.archived), [filtered]);
+  const activeGroups = useMemo(() => groupByCategory(activeDocs), [activeDocs]);
+  const archivedGroups = useMemo(() => groupByCategory(archivedDocs), [archivedDocs]);
   // Show only the last few path segments so the breadcrumb stays readable
   // regardless of the absolute root configured via OPENCLAW_ROOT.
   const breadcrumb = selected ? selected.split('/').filter(Boolean).slice(-3).join('/') : '';
@@ -397,12 +389,12 @@ export default function DocsPage() {
   // Recent shelf — last 7 days across all categories, capped, only in category view
   const recentShelf = useMemo(() => {
     if (viewMode !== 'category') return [];
-    const cutoff = Date.now() - RECENT_WINDOW_MS;
+    const cutoff = now - RECENT_WINDOW_MS;
     return activeDocs
       .filter((d) => d.modified >= cutoff)
       .sort((a, b) => b.modified - a.modified)
       .slice(0, RECENT_SHELF_MAX);
-  }, [activeDocs, viewMode]);
+  }, [activeDocs, viewMode, now]);
 
   // Date-bucket groupings for date view (active only — archived stays in the
   // collapsed Archived section regardless of view mode for clarity)

@@ -63,12 +63,14 @@ async function postHeartbeat(body: Record<string, unknown>): Promise<boolean> {
   }
 }
 
-function parseJsonl(filePath: string): Array<Record<string, any>> {
+type CronEntry = { action: string; ts?: number; status?: string; durationMs?: number; [key: string]: unknown };
+
+function parseJsonl(filePath: string): CronEntry[] {
   if (!fs.existsSync(filePath)) return [];
   const lines = fs.readFileSync(filePath, 'utf8').split('\n').filter(Boolean);
-  const rows: Array<Record<string, any>> = [];
+  const rows: CronEntry[] = [];
   for (const line of lines) {
-    try { rows.push(JSON.parse(line)); } catch { /* skip malformed */ }
+    try { rows.push(JSON.parse(line) as CronEntry); } catch { /* skip malformed */ }
   }
   return rows;
 }

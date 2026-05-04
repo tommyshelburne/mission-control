@@ -49,7 +49,11 @@ export async function POST(request: Request) {
     notes = '',
     next_action = '',
     next_action_date,
-  } = body as Record<string, any>;
+  } = body as {
+    title?: unknown; company?: unknown; stage?: string; source?: string; location?: string;
+    salary_min?: number | null; salary_max?: number | null; url?: string; contact?: string;
+    notes?: string; next_action?: string; next_action_date?: string | null;
+  };
 
   if (!title || typeof title !== 'string' || !title.trim()) {
     return NextResponse.json({ error: 'title is required' }, { status: 400 });

@@ -44,7 +44,10 @@ export function CommandPalette() {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        setOpen((o) => !o);
+        setOpen((o) => {
+          if (!o) { setQ(''); setResults([]); setSelected(0); }
+          return !o;
+        });
         return;
       }
       if (open && e.key === 'Escape') {
@@ -56,23 +59,11 @@ export function CommandPalette() {
     return () => window.removeEventListener('keydown', handler);
   }, [open]);
 
-  // Reset when opening
-  useEffect(() => {
-    if (open) {
-      setQ('');
-      setResults([]);
-      setSelected(0);
-    }
-  }, [open]);
-
-  // Debounced fetch
+  // Debounced fetch — only runs when there is a non-empty query
   useEffect(() => {
     if (!open) return;
     const query = q.trim();
-    if (!query) {
-      setResults([]);
-      return;
-    }
+    if (!query) return;
     const ctrl = new AbortController();
     const t = setTimeout(async () => {
       try {
@@ -153,7 +144,7 @@ export function CommandPalette() {
               ref={inputRef}
               autoFocus
               value={q}
-              onChange={(e) => setQ(e.target.value)}
+              onChange={(e) => { const v = e.target.value; setQ(v); if (!v.trim()) setResults([]); }}
               onKeyDown={onKey}
               placeholder="Search tasks, projects, docs, opportunities…"
               style={{
@@ -230,7 +221,6 @@ export function CommandPalette() {
                             textOverflow: 'ellipsis',
                             whiteSpace: 'nowrap',
                           }}
-                          // eslint-disable-next-line react/no-danger
                           dangerouslySetInnerHTML={{ __html: hit.snippet }}
                         />
                       )}

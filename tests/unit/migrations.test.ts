@@ -50,7 +50,7 @@ describe('runMigrations', () => {
     const tables = db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
       .all()
-      .map((r: any) => r.name as string);
+      .map((r) => (r as { name: string }).name);
     expect(tables).toEqual(expect.arrayContaining(['foo', 'bar', '_migrations']));
   });
 
@@ -68,7 +68,7 @@ describe('runMigrations', () => {
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT IN ('_migrations', 'sqlite_sequence')",
       )
       .all()
-      .map((r: any) => r.name as string);
+      .map((r) => (r as { name: string }).name);
     expect(userTables).toEqual(['one']);
   });
 
@@ -83,7 +83,7 @@ describe('runMigrations', () => {
     const recorded = db
       .prepare('SELECT name FROM _migrations')
       .all()
-      .map((r: any) => r.name as string);
+      .map((r) => (r as { name: string }).name);
     expect(recorded).toEqual(['001_good.sql']);
     const hasBad = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='bad'")

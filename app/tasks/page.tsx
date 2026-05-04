@@ -379,13 +379,15 @@ function TasksPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [addingTask, setAddingTask] = useState(false);
   const [doneVisible, setDoneVisible] = useState(DONE_PAGE_SIZE);
+  const [prevProjectFilter, setPrevProjectFilter] = useState(projectFilter);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const newTaskRef = useRef<HTMLInputElement>(null);
 
-  /* Reset doneVisible when filter changes */
-  useEffect(() => {
+  /* Reset doneVisible when filter changes (computed during render, avoids setState-in-effect) */
+  if (prevProjectFilter !== projectFilter) {
+    setPrevProjectFilter(projectFilter);
     setDoneVisible(DONE_PAGE_SIZE);
-  }, [projectFilter]);
+  }
 
   /* Focus new task input after state flip */
   useEffect(() => {

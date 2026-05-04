@@ -48,12 +48,12 @@ describe('GET /api/agents', () => {
     });
 
     const { GET } = await import('@/app/api/agents/route');
-    const body = await (await GET()).json();
+    const body = (await (await GET()).json()) as { agents: Array<{ name: string; effective_status: string }> };
     expect(body.agents).toHaveLength(2);
-    const claw = body.agents.find((a: any) => a.name === 'claw');
-    const rex = body.agents.find((a: any) => a.name === 'rex');
-    expect(claw.effective_status).toBe('idle');
-    expect(rex.effective_status).toBe('offline');
+    const claw = body.agents.find((a) => a.name === 'claw');
+    const rex = body.agents.find((a) => a.name === 'rex');
+    expect(claw?.effective_status).toBe('idle');
+    expect(rex?.effective_status).toBe('offline');
   });
 });
 

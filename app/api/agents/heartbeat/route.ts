@@ -3,7 +3,6 @@ import { getRedis } from '@/lib/redis';
 import { publishEvent } from '@/lib/events';
 
 const VALID_STATUSES = ['idle', 'busy', 'offline'] as const;
-type AgentStatus = (typeof VALID_STATUSES)[number];
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);

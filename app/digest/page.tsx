@@ -193,10 +193,17 @@ export default function DigestPage() {
   }, []);
 
   useEffect(() => {
-    fetchDigest();
-    const interval = setInterval(fetchDigest, 60_000);
-    return () => clearInterval(interval);
-  }, [fetchDigest]);
+    let cancelled = false;
+    const run = () =>
+      fetch('/api/digest')
+        .then(r => r.ok ? r.json() as Promise<DigestData> : Promise.reject())
+        .then(d => { if (!cancelled) setData(d); })
+        .catch(() => {})
+        .finally(() => { if (!cancelled) setLoading(false); });
+    run();
+    const interval = setInterval(run, 60_000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
 
   useEffect(() => {
     fetch('/api/usage')
