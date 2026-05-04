@@ -209,7 +209,7 @@ INSERT INTO _migrations (name) VALUES
   ('006_agent_cost_daily.sql');
 `;
 
-export interface TestDb extends Database.Database {}
+export type TestDb = Database.Database;
 
 export function makeTestDb(): TestDb {
   const db = new Database(':memory:');
