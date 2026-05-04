@@ -24,5 +24,8 @@ data/
 /playwright-report/
 /playwright/.cache/
 
+# vitest
+/coverage/
+
 # Internal-only docs (not for public repo)
 docs/internal/
