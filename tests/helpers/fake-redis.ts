@@ -38,8 +38,7 @@ export class FakeRedis {
     cursor: string,
     _matchKw: 'MATCH',
     pattern: string,
-    _countKw: 'COUNT',
-    _count: number,
+    ..._tail: ['COUNT', number]
   ): Promise<[string, string[]]> {
     if (cursor !== '0') return ['0', []];
     const re = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');

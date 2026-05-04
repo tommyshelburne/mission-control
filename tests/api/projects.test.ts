@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type Database from 'better-sqlite3';
+import type { NextRequest } from 'next/server';
 
 import { makeTestDb } from '../helpers/test-db';
 import { jsonRequest } from '../helpers/route';
@@ -34,10 +35,10 @@ describe('GET /api/projects', () => {
     db.prepare("INSERT INTO tasks (title, status, project_id) VALUES ('a', 'todo', 1), ('b', 'done', 1), ('c', 'in-progress', 2)").run();
 
     const { GET } = await loadRoute();
-    const body = await (await GET()).json();
-    const alpha = body.projects.find((p: any) => p.name === 'Alpha');
+    const body = (await (await GET()).json()) as { projects: Array<{ name: string; tasks_open: number; tasks_done: number; task_count: number }> };
+    const alpha = body.projects.find((p) => p.name === 'Alpha');
     expect(alpha).toMatchObject({ tasks_open: 1, tasks_done: 1, task_count: 2 });
-    const bravo = body.projects.find((p: any) => p.name === 'Bravo');
+    const bravo = body.projects.find((p) => p.name === 'Bravo');
     expect(bravo).toMatchObject({ tasks_open: 1, tasks_done: 0, task_count: 1 });
   });
 });
@@ -46,7 +47,7 @@ describe('POST /api/projects', () => {
   it('creates a project with sensible defaults', async () => {
     const { POST } = await loadRoute();
     const res = await POST(
-      jsonRequest('http://x/api/projects', { method: 'POST', body: JSON.stringify({ name: 'New' }) }) as any,
+      jsonRequest('http://x/api/projects', { method: 'POST', body: JSON.stringify({ name: 'New' }) }) as unknown as NextRequest,
     );
     expect(res.status).toBe(201);
     const body = await res.json();
@@ -56,16 +57,16 @@ describe('POST /api/projects', () => {
   it('400s without a name', async () => {
     const { POST } = await loadRoute();
     const res = await POST(
-      jsonRequest('http://x/api/projects', { method: 'POST', body: JSON.stringify({ name: '' }) }) as any,
+      jsonRequest('http://x/api/projects', { method: 'POST', body: JSON.stringify({ name: '' }) }) as unknown as NextRequest,
     );
     expect(res.status).toBe(400);
   });
 
   it('rejects duplicate name (unique constraint)', async () => {
     const { POST } = await loadRoute();
-    await POST(jsonRequest('http://x/api/projects', { method: 'POST', body: JSON.stringify({ name: 'Dup' }) }) as any);
+    await POST(jsonRequest('http://x/api/projects', { method: 'POST', body: JSON.stringify({ name: 'Dup' }) }) as unknown as NextRequest);
     await expect(
-      POST(jsonRequest('http://x/api/projects', { method: 'POST', body: JSON.stringify({ name: 'Dup' }) }) as any),
+      POST(jsonRequest('http://x/api/projects', { method: 'POST', body: JSON.stringify({ name: 'Dup' }) }) as unknown as NextRequest),
     ).rejects.toThrow(/UNIQUE/);
   });
 });
