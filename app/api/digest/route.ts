@@ -49,34 +49,47 @@ function parseEscalations(): Escalation[] {
     const lines = section.split('\n');
     const heading = lines[0].trim();
 
-    // Format A: [YYYY-MM-DD] LEVEL — Title
+    // Format C (new, OPEN-only): [OPEN <id> YYYY-MM-DD HH:MM] Source [level]: Title
+    // RESOLVED entries are bookkeeping — never user-facing.
+    const matchC = heading.match(/^\[OPEN\s+[a-f0-9]{8}\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\]\s+(\S+)\s+\[([^\]]+)\]:\s+(.+)$/);
+    // Format A (legacy): [YYYY-MM-DD] LEVEL — Title
     const matchA = heading.match(/^\[(\d{4}-\d{2}-\d{2})\]\s+(\w+)\s+[—–-]\s+(.+)$/);
-    // Format B: [YYYY-MM-DD HH:MM] Source: Title
+    // Format B (legacy): [YYYY-MM-DD HH:MM] Source: Title
     const matchB = heading.match(/^\[(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\]\s+(\w+):\s+(.+)$/);
+    // Skip RESOLVED entries explicitly so they never leak through a future legacy match.
+    if (heading.startsWith('[RESOLVED ')) continue;
 
-    if (matchA) {
+    const collectBody = () => {
       const bodyLines: string[] = [];
       for (let i = 1; i < lines.length; i++) {
         if (lines[i].trim() === '---' || lines[i].startsWith('## ')) break;
+        // Hide bookkeeping line from the user.
+        if (lines[i].startsWith('dedup_key:')) continue;
         bodyLines.push(lines[i]);
       }
+      return bodyLines.join('\n').trim();
+    };
+
+    if (matchC) {
+      escalations.push({
+        date: matchC[1],
+        level: matchC[3],
+        title: `${matchC[2]}: ${matchC[4]}`,
+        body: collectBody(),
+      });
+    } else if (matchA) {
       escalations.push({
         date: matchA[1],
         level: matchA[2],
         title: matchA[3],
-        body: bodyLines.join('\n').trim(),
+        body: collectBody(),
       });
     } else if (matchB) {
-      const bodyLines: string[] = [];
-      for (let i = 1; i < lines.length; i++) {
-        if (lines[i].trim() === '---' || lines[i].startsWith('## ')) break;
-        bodyLines.push(lines[i]);
-      }
       escalations.push({
         date: matchB[1],
         level: matchB[2],
         title: matchB[3],
-        body: bodyLines.join('\n').trim(),
+        body: collectBody(),
       });
     }
   }

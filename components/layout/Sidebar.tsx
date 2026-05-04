@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
   Activity, Sun, LayoutGrid, TrendingUp, FolderOpen, Brain, Users,
-  Briefcase, FileText, Zap, LucideIcon,
+  Briefcase, FileText, DollarSign, Zap, Sparkles, LucideIcon,
 } from 'lucide-react';
 import { StatusDot } from '@/components/ui';
 import { Clock } from './Clock';
@@ -21,8 +21,10 @@ const primaryNav = [
 ];
 
 const toolsNav = [
-  { label: 'Jobs',  href: '/jobs', icon: Briefcase },
-  { label: 'Docs',  href: '/docs', icon: FileText },
+  { label: 'Jobs',         href: '/jobs',         icon: Briefcase },
+  { label: 'Costs',        href: '/costs',        icon: DollarSign },
+  { label: 'Anticipation', href: '/anticipation', icon: Sparkles },
+  { label: 'Docs',         href: '/docs',         icon: FileText },
 ];
 
 export function Sidebar() {

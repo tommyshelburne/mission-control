@@ -2,14 +2,14 @@ import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const MIGRATIONS_DIR = path.join(process.cwd(), 'lib', 'migrations');
-
 export interface MigrationResult {
   applied: string[];
   skipped: string[];
 }
 
 export function runMigrations(db: Database.Database): MigrationResult {
+  const migrationsDir = path.join(process.cwd(), 'lib', 'migrations');
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS _migrations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -23,7 +23,7 @@ export function runMigrations(db: Database.Database): MigrationResult {
   );
 
   const files = fs
-    .readdirSync(MIGRATIONS_DIR)
+    .readdirSync(migrationsDir)
     .filter((f) => /^\d{3}_.+\.sql$/.test(f))
     .sort();
 
@@ -35,7 +35,7 @@ export function runMigrations(db: Database.Database): MigrationResult {
       result.skipped.push(file);
       continue;
     }
-    const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8');
+    const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
     const tx = db.transaction(() => {
       db.exec(sql);
       record.run(file);
