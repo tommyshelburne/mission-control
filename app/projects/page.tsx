@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { FolderOpen, Pencil, Archive, Trash2, Plus, MoreHorizontal } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Badge, Button, EmptyState, Spinner } from '@/components/ui';
+import { toast, fetchJson } from '@/lib/toast';
 
 interface Project {
   id: number;
@@ -332,94 +334,62 @@ function ProjectCard({
 }
 
 export default function ProjectsPage() {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [saving, setSaving] = useState(false);
 
-  const fetchProjects = useCallback(async () => {
-    try {
-      const res = await fetch('/api/projects');
-      if (res.ok) {
-        const data = await res.json();
-        setProjects(data.projects);
-      }
-    } catch {
-      // Silently fail
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const { data: projects = [], isLoading: loading } = useQuery<Project[]>({
+    queryKey: ['projects'],
+    queryFn: () => fetchJson<{ projects: Project[] }>('/api/projects').then(d => d.projects ?? []),
+  });
 
-  useEffect(() => {
-    fetch('/api/projects')
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then((data: { projects: Project[] }) => setProjects(data.projects))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['projects'] });
 
-  const handleCreate = async (form: ProjectFormData) => {
-    setSaving(true);
-    try {
-      const res = await fetch('/api/projects', {
+  const createMutation = useMutation({
+    mutationFn: (form: ProjectFormData) =>
+      fetchJson('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
-      });
-      if (res.ok) {
-        setCreating(false);
-        fetchProjects();
-      }
-    } catch {
-      // Silently fail
-    } finally {
-      setSaving(false);
-    }
-  };
+      }),
+    onSuccess: () => { setCreating(false); invalidate(); toast.success('Project created'); },
+    onError: (err: Error) => toast.error(`Couldn't create project: ${err.message}`),
+  });
 
-  const handleSaveEdit = async (id: number, form: ProjectFormData) => {
-    setSaving(true);
-    try {
-      const res = await fetch(`/api/projects/${id}`, {
+  const editMutation = useMutation({
+    mutationFn: ({ id, form }: { id: number; form: ProjectFormData }) =>
+      fetchJson(`/api/projects/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
-      });
-      if (res.ok) {
-        setEditingId(null);
-        fetchProjects();
-      }
-    } catch {
-      // Silently fail
-    } finally {
-      setSaving(false);
-    }
-  };
+      }),
+    onSuccess: () => { setEditingId(null); invalidate(); toast.success('Project saved'); },
+    onError: (err: Error) => toast.error(`Couldn't save project: ${err.message}`),
+  });
 
-  const handleArchive = async (project: Project) => {
-    const newStatus = project.status === 'archived' ? 'active' : 'archived';
-    try {
-      await fetch(`/api/projects/${project.id}`, {
+  const archiveMutation = useMutation({
+    mutationFn: ({ id, status }: { id: number; status: string }) =>
+      fetchJson(`/api/projects/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      });
-      fetchProjects();
-    } catch {
-      // Silently fail
-    }
-  };
+        body: JSON.stringify({ status }),
+      }),
+    onSuccess: () => invalidate(),
+    onError: (err: Error) => toast.error(`Couldn't archive: ${err.message}`),
+  });
 
-  const handleDelete = async (id: number) => {
-    try {
-      await fetch(`/api/projects/${id}`, { method: 'DELETE' });
-      fetchProjects();
-    } catch {
-      // Silently fail
-    }
-  };
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => fetchJson(`/api/projects/${id}`, { method: 'DELETE' }),
+    onSuccess: () => { invalidate(); toast.success('Project deleted'); },
+    onError: (err: Error) => toast.error(`Couldn't delete: ${err.message}`),
+  });
+
+  const saving = createMutation.isPending || editMutation.isPending;
+
+  const handleCreate = (form: ProjectFormData) => createMutation.mutate(form);
+  const handleSaveEdit = (id: number, form: ProjectFormData) => editMutation.mutate({ id, form });
+  const handleArchive = (project: Project) => archiveMutation.mutate({ id: project.id, status: project.status === 'archived' ? 'active' : 'archived' });
+  const handleDelete = (id: number) => deleteMutation.mutate(id);
 
   return (
     <>

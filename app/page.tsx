@@ -158,7 +158,7 @@ export default function HomePage() {
     <>
       <PageHeader title="Activity" subtitle="Live" />
 
-      <div className="p-6 space-y-6 max-w-[900px]">
+      <div className="p-6 space-y-6 max-w-[900px] flex-1 overflow-y-auto min-h-0 w-full">
         {/* Action-required notifications */}
         {(notifData?.notifications?.length ?? 0) > 0 && (
           <section>

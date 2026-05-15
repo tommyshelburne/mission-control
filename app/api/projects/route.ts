@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { logActivity } from '@/lib/activity';
 
 interface ProjectRow {
   id: number;
@@ -56,7 +57,15 @@ export async function POST(request: NextRequest) {
 
   const project = db
     .prepare('SELECT * FROM projects WHERE id = ?')
-    .get(result.lastInsertRowid) as Record<string, unknown>;
+    .get(result.lastInsertRowid) as { id: number; name: string };
+
+  await logActivity({
+    entity_type: 'project',
+    entity_id: project.id,
+    action: 'created',
+    actor: typeof body.actor === 'string' && body.actor ? body.actor : 'Tommy',
+    detail: { name: project.name },
+  });
 
   return NextResponse.json({ project }, { status: 201 });
 }

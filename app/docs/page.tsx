@@ -6,6 +6,7 @@ import { FileText, Eye, EyeOff, Download, MoreHorizontal, Plus, ChevronDown, Che
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button, EmptyState, Spinner } from '@/components/ui';
 import { CodeMirrorEditor } from '@/components/docs/CodeMirrorEditor';
+import { toast } from '@/lib/toast';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -100,7 +101,7 @@ export default function DocsPage() {
   const [editContent, setEditContent] = useState('');
   const [listLoading, setListLoading] = useState(true);
   const [contentLoading, setContentLoading] = useState(false);
-  const [preview, setPreview] = useState(false);
+  const [preview, setPreview] = useState(true);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
@@ -161,11 +162,12 @@ export default function DocsPage() {
     setContentLoading(true);
     setContent(null);
     setSaveStatus('idle');
-    // Restore per-file preview preference (defaults to source/edit mode)
+    // Restore per-file preview preference; default is rich preview (true).
     try {
-      setPreview(localStorage.getItem(`mc.docs.preview.${filePath}`) === '1');
+      const stored = localStorage.getItem(`mc.docs.preview.${filePath}`);
+      setPreview(stored == null ? true : stored === '1');
     } catch {
-      setPreview(false);
+      setPreview(true);
     }
     try {
       const res = await fetch(`/api/docs/file?path=${encodeURIComponent(filePath)}`);
@@ -251,9 +253,11 @@ export default function DocsPage() {
           setSelected(null);
           setContent(null);
         }
+      } else {
+        toast.error(`Couldn't delete: ${res.status}`);
       }
-    } catch {
-      // silently fail
+    } catch (err) {
+      toast.error(`Couldn't delete: ${(err as Error).message}`);
     }
     setMenuOpen(null);
   }, [selected]);
@@ -300,12 +304,16 @@ export default function DocsPage() {
         }
         setSelectedPaths(new Set());
         if (data.failed?.length) {
-          alert(`Archived ${data.archived.length} of ${paths.length}. ${data.failed.length} failed — check console.`);
+          toast.error(`Archived ${data.archived.length} of ${paths.length} — ${data.failed.length} failed`);
           console.error('Bulk archive failures:', data.failed);
+        } else {
+          toast.success(`Archived ${data.archived.length} file${data.archived.length === 1 ? '' : 's'}`);
         }
+      } else {
+        toast.error(`Couldn't archive: ${res.status}`);
       }
     } catch (err) {
-      console.error('Bulk archive error:', err);
+      toast.error(`Couldn't archive: ${(err as Error).message}`);
     } finally {
       setArchiving(false);
     }
@@ -339,9 +347,11 @@ export default function DocsPage() {
         setNewFileInput(false);
         setNewFileName('');
         loadFile(data.path);
+      } else {
+        toast.error(`Couldn't create file: ${res.status}`);
       }
-    } catch {
-      // silently fail
+    } catch (err) {
+      toast.error(`Couldn't create file: ${(err as Error).message}`);
     }
   }, [newFileName, loadFile]);
 
@@ -552,33 +562,33 @@ export default function DocsPage() {
             <div className="flex items-center bg-[var(--bg-elevated)] rounded-md overflow-hidden">
               <button
                 onClick={() => persistViewMode('category')}
-                className={`px-2 h-6 flex items-center gap-1 text-11 ${
+                className={`px-2.5 h-7 flex items-center gap-1.5 text-11 ${
                   viewMode === 'category'
                     ? 'bg-[var(--bg-hover)] text-[var(--text-primary)]'
                     : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                 }`}
                 title="Group by category"
               >
-                <FolderTree size={10} />
+                <FolderTree size={12} />
                 Category
               </button>
               <button
                 onClick={() => persistViewMode('date')}
-                className={`px-2 h-6 flex items-center gap-1 text-11 ${
+                className={`px-2.5 h-7 flex items-center gap-1.5 text-11 ${
                   viewMode === 'date'
                     ? 'bg-[var(--bg-hover)] text-[var(--text-primary)]'
                     : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                 }`}
                 title="Group by date"
               >
-                <Calendar size={10} />
+                <Calendar size={12} />
                 Date
               </button>
             </div>
             <select
               value={ageFilter}
               onChange={(e) => persistAgeFilter(e.target.value as AgeFilter)}
-              className="bg-[var(--bg-elevated)] border-none rounded-md px-2 h-6 text-11 text-[var(--text-secondary)] outline-none cursor-pointer"
+              className="bg-[var(--bg-elevated)] border-none rounded-md px-2 h-7 text-11 text-[var(--text-secondary)] outline-none cursor-pointer"
               title="Filter by age"
             >
               <option value="all">All time</option>
@@ -598,7 +608,7 @@ export default function DocsPage() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  icon={<Archive size={11} />}
+                  icon={<Archive size={12} />}
                   onClick={handleBulkArchive}
                   disabled={archiving}
                   title="Move selected to .archive/ (hidden from sidebar; files preserved on disk)"
@@ -607,7 +617,7 @@ export default function DocsPage() {
                 </Button>
                 <button
                   onClick={clearSelection}
-                  className="w-6 h-6 flex items-center justify-center rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)]"
+                  className="w-[26px] h-[26px] flex items-center justify-center rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)]"
                   title="Clear selection"
                 >
                   <X size={12} />

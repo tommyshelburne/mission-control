@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { logActivity } from '@/lib/activity';
 
 const SELECT_TASK_WITH_PROJECT = `
   SELECT t.*, COALESCE(p.name, '') AS project
@@ -51,7 +52,13 @@ export async function POST(request: Request) {
     priority = 'medium',
     due_date = '',
     parent_id,
+    depends_on,
+    source = 'manual',
+    source_agent,
+    actor,
   } = body;
+  // Actor for activity_log: explicit body.actor wins, else source_agent for agent-driven calls, else Tommy (UI).
+  const actorName: string = actor || (source === 'agent' && source_agent) || 'Tommy';
 
   if (!title || !title.trim()) {
     return NextResponse.json({ error: 'Title is required' }, { status: 400 });
@@ -69,15 +76,35 @@ export async function POST(request: Request) {
     parentId = parent.id;
   }
 
+  // depends_on: must reference an existing task. Self-ref is impossible at
+  // INSERT time (id not yet assigned). Cycle detection is unnecessary here
+  // since this is the first row in any chain that would include it.
+  let dependsOn: number | null = null;
+  if (depends_on != null && depends_on !== '') {
+    const num = Number(depends_on);
+    const dep = db.prepare('SELECT id FROM tasks WHERE id = ?').get(num) as { id: number } | undefined;
+    if (!dep) return NextResponse.json({ error: 'depends_on not found' }, { status: 400 });
+    dependsOn = num;
+  }
+
   const minRow = db.prepare('SELECT MIN(position) as minPos FROM tasks WHERE status = ?').get(status) as { minPos: number | null };
   const position = (minRow.minPos ?? 1001) - 1;
 
   const stmt = db.prepare(`
-    INSERT INTO tasks (title, description, status, assignee, priority, project_id, parent_id, due_date, position)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO tasks (title, description, status, assignee, priority, project_id, parent_id, depends_on, due_date, position)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
-  const result = stmt.run(title.trim(), description, status, assignee, priority, projectId, parentId, due_date, position);
+  const result = stmt.run(title.trim(), description, status, assignee, priority, projectId, parentId, dependsOn, due_date, position);
 
-  const task = db.prepare(`${SELECT_TASK_WITH_PROJECT} WHERE t.id = ?`).get(result.lastInsertRowid);
+  const task = db.prepare(`${SELECT_TASK_WITH_PROJECT} WHERE t.id = ?`).get(result.lastInsertRowid) as { id: number; title: string } | undefined;
+  if (task) {
+    await logActivity({
+      entity_type: 'task',
+      entity_id: task.id,
+      action: 'created',
+      actor: actorName,
+      detail: { title: task.title },
+    });
+  }
   return NextResponse.json(task, { status: 201 });
 }

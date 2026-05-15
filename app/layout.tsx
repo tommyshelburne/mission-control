@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Toaster } from 'sonner';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Providers } from '@/components/Providers';
 import { QuickCapture } from '@/components/layout/QuickCapture';
@@ -25,6 +26,18 @@ export default function RootLayout({
           </main>
           <QuickCapture />
           <CommandPalette />
+          <Toaster
+            position="bottom-right"
+            theme="dark"
+            toastOptions={{
+              style: {
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border)',
+                color: 'var(--text-primary)',
+                fontSize: 13,
+              },
+            }}
+          />
         </Providers>
       </body>
     </html>

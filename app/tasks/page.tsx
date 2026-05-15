@@ -25,6 +25,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Badge, Button, InlineEdit, Select, DatePicker, SlidePanel, Spinner } from '@/components/ui';
 import { X } from 'lucide-react';
+import { toast, fetchJson } from '@/lib/toast';
 
 /* ---------- types ---------- */
 
@@ -42,6 +43,36 @@ interface Task {
   position: number;
   created_at: string;
   updated_at: string;
+  completed_at: string | null;
+}
+
+type SortBy = 'manual' | 'priority' | 'due' | 'updated' | 'created';
+
+const SORT_OPTIONS: { value: SortBy; label: string }[] = [
+  { value: 'manual',   label: 'Manual' },
+  { value: 'priority', label: 'Priority' },
+  { value: 'due',      label: 'Due date' },
+  { value: 'updated',  label: 'Recently updated' },
+  { value: 'created',  label: 'Newest' },
+];
+
+const PRIORITY_WEIGHT: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
+
+function compareTasks(a: Task, b: Task, sortBy: SortBy): number {
+  if (sortBy === 'priority') {
+    const aw = PRIORITY_WEIGHT[a.priority] ?? 99;
+    const bw = PRIORITY_WEIGHT[b.priority] ?? 99;
+    if (aw !== bw) return aw - bw;
+  } else if (sortBy === 'due') {
+    const aMs = a.due_date ? new Date(a.due_date + 'T12:00:00').getTime() : Number.POSITIVE_INFINITY;
+    const bMs = b.due_date ? new Date(b.due_date + 'T12:00:00').getTime() : Number.POSITIVE_INFINITY;
+    if (aMs !== bMs) return aMs - bMs;
+  } else if (sortBy === 'updated') {
+    return (b.updated_at || '').localeCompare(a.updated_at || '');
+  } else if (sortBy === 'created') {
+    return (b.created_at || '').localeCompare(a.created_at || '');
+  }
+  return (a.position ?? 0) - (b.position ?? 0);
 }
 
 interface Project {
@@ -56,16 +87,17 @@ const COLUMNS: { key: string; label: string }[] = [
   { key: 'done', label: 'Done' },
 ];
 
-const ASSIGNEES = ['Tommy', 'Claw', 'Rex', 'Scout', 'Herald', 'Quill', 'Coach', 'Warden'];
-
 const STATUS_OPTIONS = COLUMNS.map(c => ({ value: c.key, label: c.label }));
-const ASSIGNEE_OPTIONS = ASSIGNEES.map(a => ({ value: a, label: a }));
 const PRIORITY_OPTIONS = [
   { value: 'low', label: 'Low' },
   { value: 'medium', label: 'Medium' },
   { value: 'high', label: 'High' },
   { value: 'urgent', label: 'Urgent' },
 ];
+
+function titleCase(s: string): string {
+  return s.length === 0 ? s : s[0].toUpperCase() + s.slice(1);
+}
 
 const DONE_PAGE_SIZE = 15;
 
@@ -102,28 +134,6 @@ const PRIORITY_DOT_COLORS: Record<string, string> = {
   medium: 'var(--info)',
   low:    'var(--text-muted)',
 };
-
-/* ---------- position helpers ---------- */
-
-function computeNewPosition(columnTasks: Task[], toIndex: number): number {
-  const sorted = [...columnTasks].sort((a, b) => a.position - b.position);
-  const prev = sorted[toIndex - 1]?.position ?? 0;
-  const next = sorted[toIndex]?.position ?? (prev + 2000);
-  return (prev + next) / 2;
-}
-
-function needsRebalance(tasks: Task[]): boolean {
-  const sorted = [...tasks].sort((a, b) => a.position - b.position);
-  for (let i = 1; i < sorted.length; i++) {
-    if (sorted[i].position - sorted[i - 1].position < 0.001) return true;
-  }
-  return false;
-}
-
-function rebalance(tasks: Task[]): Task[] {
-  const sorted = [...tasks].sort((a, b) => a.position - b.position);
-  return sorted.map((t, i) => ({ ...t, position: (i + 1) * 1000 }));
-}
 
 /* ---------- KanbanCard (sortable) ---------- */
 
@@ -381,7 +391,16 @@ function TasksPage() {
   const [doneVisible, setDoneVisible] = useState(DONE_PAGE_SIZE);
   const [prevProjectFilter, setPrevProjectFilter] = useState(projectFilter);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [sortBy, setSortBy] = useState<SortBy>(() => {
+    if (typeof window === 'undefined') return 'manual';
+    const stored = localStorage.getItem('mc.tasks.sortBy') as SortBy | null;
+    return stored && SORT_OPTIONS.some(o => o.value === stored) ? stored : 'manual';
+  });
   const newTaskRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') localStorage.setItem('mc.tasks.sortBy', sortBy);
+  }, [sortBy]);
 
   /* Reset doneVisible when filter changes (computed during render, avoids setState-in-effect) */
   if (prevProjectFilter !== projectFilter) {
@@ -422,6 +441,12 @@ function TasksPage() {
     staleTime: 60_000,
   });
 
+  const { data: agents = [] } = useQuery<{ name: string }[]>({
+    queryKey: ['agents'],
+    queryFn: () => fetch('/api/agents').then(r => r.json()).then(d => d.agents ?? []).catch(() => []),
+    refetchInterval: 30_000,
+  });
+
   /* ---------- derived data ---------- */
 
   // Kanban shows only top-level tasks; subtasks live inside the detail panel of their parent.
@@ -452,24 +477,29 @@ function TasksPage() {
 
   const grouped = useMemo(
     () => COLUMNS.reduce<Record<string, Task[]>>((acc, col) => {
-      const colTasks = displayed
-        .filter(t => t.status === col.key)
-        .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
-      acc[col.key] = col.key === 'done' ? colTasks.slice(0, doneVisible) : colTasks;
+      const colTasks = displayed.filter(t => t.status === col.key);
+      if (col.key === 'done') {
+        // Done column always shows newest-completed first regardless of sortBy.
+        colTasks.sort((a, b) => (b.completed_at || '').localeCompare(a.completed_at || ''));
+        acc[col.key] = colTasks.slice(0, doneVisible);
+      } else {
+        colTasks.sort((a, b) => compareTasks(a, b, sortBy));
+        acc[col.key] = colTasks;
+      }
       return acc;
     }, {}),
-    [displayed, doneVisible]
+    [displayed, doneVisible, sortBy]
   );
 
   /* ---------- mutations ---------- */
 
   const patchMutation = useMutation({
     mutationFn: ({ id, fields }: { id: number; fields: Partial<Task> }) =>
-      fetch(`/api/tasks/${id}`, {
+      fetchJson<Task>(`/api/tasks/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(fields),
-      }).then(r => r.json()),
+      }),
     onMutate: async ({ id, fields }) => {
       await queryClient.cancelQueries({ queryKey: ['tasks'] });
       const prev = queryClient.getQueryData<Task[]>(['tasks']);
@@ -479,18 +509,19 @@ function TasksPage() {
       setSelectedTask(cur => cur && cur.id === id ? { ...cur, ...fields } : cur);
       return { prev };
     },
-    onError: (_err, _vars, ctx) => {
+    onError: (err: Error, _vars, ctx) => {
       if (ctx?.prev) queryClient.setQueryData(['tasks'], ctx.prev);
+      toast.error(`Couldn't save: ${err.message}`);
     },
   });
 
   const createMutation = useMutation({
     mutationFn: (title: string) =>
-      fetch('/api/tasks', {
+      fetchJson<Task>('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title }),
-      }).then(r => r.json()),
+      }),
     onMutate: async (title) => {
       await queryClient.cancelQueries({ queryKey: ['tasks'] });
       const prev = queryClient.getQueryData<Task[]>(['tasks']);
@@ -508,12 +539,14 @@ function TasksPage() {
         position: -Infinity,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
+        completed_at: null,
       };
       queryClient.setQueryData<Task[]>(['tasks'], old => [placeholder, ...(old ?? [])]);
       return { prev };
     },
-    onError: (_err, _vars, ctx) => {
+    onError: (err: Error, _vars, ctx) => {
       if (ctx?.prev) queryClient.setQueryData(['tasks'], ctx.prev);
+      toast.error(`Couldn't create task: ${err.message}`);
     },
     onSuccess: (newTask) => {
       queryClient.setQueryData<Task[]>(['tasks'], old =>
@@ -524,27 +557,29 @@ function TasksPage() {
 
   const createSubtaskMutation = useMutation({
     mutationFn: ({ title, parent_id }: { title: string; parent_id: number }) =>
-      fetch('/api/tasks', {
+      fetchJson<Task>('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, parent_id, status: 'todo', priority: 'medium' }),
-      }).then(r => r.json()),
+      }),
     onSuccess: (newTask) => {
       queryClient.setQueryData<Task[]>(['tasks'], old => [...(old ?? []), newTask]);
     },
+    onError: (err: Error) => toast.error(`Couldn't add subtask: ${err.message}`),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) =>
-      fetch(`/api/tasks/${id}`, { method: 'DELETE' }).then(r => r.json()),
+      fetchJson(`/api/tasks/${id}`, { method: 'DELETE' }),
     onMutate: async (id) => {
       await queryClient.cancelQueries({ queryKey: ['tasks'] });
       const prev = queryClient.getQueryData<Task[]>(['tasks']);
       queryClient.setQueryData<Task[]>(['tasks'], old => (old ?? []).filter(t => t.id !== id));
       return { prev };
     },
-    onError: (_err, _vars, ctx) => {
+    onError: (err: Error, _vars, ctx) => {
       if (ctx?.prev) queryClient.setQueryData(['tasks'], ctx.prev);
+      toast.error(`Couldn't delete task: ${err.message}`);
     },
   });
 
@@ -557,6 +592,39 @@ function TasksPage() {
     setActiveTask(task);
   }, [queryClient]);
 
+  const reorderMutation = useMutation({
+    mutationFn: ({ taskId, targetStatus, targetIndex }: { taskId: number; targetStatus: string; targetIndex: number }) =>
+      fetchJson<{ tasks: Task[] }>('/api/tasks/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId, targetStatus, targetIndex }),
+      }),
+    onMutate: async ({ taskId, targetStatus, targetIndex }) => {
+      await queryClient.cancelQueries({ queryKey: ['tasks'] });
+      const prev = queryClient.getQueryData<Task[]>(['tasks']);
+      // Optimistic: assume the move succeeds. Place the card at targetIndex in target column.
+      queryClient.setQueryData<Task[]>(['tasks'], (old) => {
+        if (!old) return old;
+        const dragged = old.find(t => t.id === taskId);
+        if (!dragged) return old;
+        const sibs = old.filter(t => t.status === targetStatus && t.id !== taskId && t.parent_id == null).sort((a, b) => a.position - b.position);
+        const prevPos = sibs[targetIndex - 1]?.position ?? (sibs[0]?.position ?? 0) - 1000;
+        const nextPos = sibs[targetIndex]?.position ?? prevPos + 2000;
+        const optimisticPos = (prevPos + nextPos) / 2;
+        return old.map(t => t.id === taskId ? { ...t, status: targetStatus, position: optimisticPos } : t);
+      });
+      return { prev };
+    },
+    onError: (err: Error, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(['tasks'], ctx.prev);
+      toast.error(`Couldn't move task: ${err.message}`);
+    },
+    onSuccess: (data) => {
+      // Server is the source of truth — replace local cache with its full task list.
+      queryClient.setQueryData<Task[]>(['tasks'], data.tasks);
+    },
+  });
+
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     setActiveTask(null);
     const { active, over } = event;
@@ -567,81 +635,34 @@ function TasksPage() {
     const draggedTask = allTasks.find(t => t.id === taskId);
     if (!draggedTask) return;
 
-    // Determine destination column: over could be a column id or a task id
     const overId = over.id;
     const overIsColumn = COLUMNS.some(c => c.key === overId);
-    const newStatus = overIsColumn
+    const targetStatus = overIsColumn
       ? String(overId)
       : (allTasks.find(t => t.id === Number(overId))?.status ?? draggedTask.status);
 
-    // Destination column tasks (excluding dragged card)
-    const destColTasks = allTasks
-      .filter(t => t.status === newStatus && t.id !== taskId)
+    const destSiblings = allTasks
+      .filter(t => t.status === targetStatus && t.id !== taskId && t.parent_id == null)
       .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
 
-    // Determine target index
-    let toIndex: number;
-    if (overIsColumn) {
-      toIndex = destColTasks.length;
-    } else {
-      const overIndex = destColTasks.findIndex(t => t.id === Number(overId));
-      toIndex = overIndex >= 0 ? overIndex : destColTasks.length;
+    const targetIndex = overIsColumn
+      ? destSiblings.length
+      : (() => {
+          const overIndex = destSiblings.findIndex(t => t.id === Number(overId));
+          return overIndex >= 0 ? overIndex : destSiblings.length;
+        })();
+
+    // No-op: same column and same slot.
+    if (targetStatus === draggedTask.status) {
+      const currentIndex = allTasks
+        .filter(t => t.status === draggedTask.status && t.parent_id == null)
+        .sort((a, b) => a.position - b.position)
+        .findIndex(t => t.id === taskId);
+      if (currentIndex === targetIndex) return;
     }
 
-    // No change
-    if (newStatus === draggedTask.status && toIndex === destColTasks.findIndex(t => t.id === taskId)) return;
-
-    let newPosition = computeNewPosition(destColTasks, toIndex);
-
-    // Rebalance if precision is getting tight
-    let rebalancedTasks: Task[] | null = null;
-    const destAll = allTasks.filter(t => t.status === newStatus && t.id !== taskId);
-    const testTasks = [...destAll, { id: taskId, position: newPosition } as Task];
-    if (needsRebalance(testTasks)) {
-      const rebalanced = rebalance(testTasks);
-      newPosition = rebalanced.find(t => t.id === taskId)?.position ?? newPosition;
-      rebalancedTasks = rebalanced;
-    }
-
-    // Optimistic update
-    queryClient.setQueryData<Task[]>(['tasks'], old => {
-      if (!old) return old;
-      if (rebalancedTasks) {
-        const rebalancedById = Object.fromEntries(rebalancedTasks.map(t => [t.id, t.position]));
-        return old.map(t => {
-          if (t.id === taskId) return { ...t, status: newStatus, position: newPosition };
-          if (rebalancedById[t.id] !== undefined) return { ...t, position: rebalancedById[t.id] };
-          return t;
-        });
-      }
-      return old.map(t => t.id === taskId ? { ...t, status: newStatus, position: newPosition } : t);
-    });
-
-    // Fire API in background
-    const fieldsToUpdate: Partial<Task> = { position: newPosition };
-    if (newStatus !== draggedTask.status) fieldsToUpdate.status = newStatus;
-
-    fetch(`/api/tasks/${taskId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(fieldsToUpdate),
-    }).catch(() => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-    });
-
-    // Fire rebalance patches in background
-    if (rebalancedTasks) {
-      for (const t of rebalancedTasks) {
-        if (t.id !== taskId) {
-          fetch(`/api/tasks/${t.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ position: t.position }),
-          }).catch(() => {});
-        }
-      }
-    }
-  }, [queryClient]);
+    reorderMutation.mutate({ taskId, targetStatus, targetIndex });
+  }, [queryClient, reorderMutation]);
 
   /* ---------- handlers ---------- */
 
@@ -681,6 +702,14 @@ function TasksPage() {
     ...projects.map(p => ({ value: p.name, label: p.name })),
   ], [projects]);
 
+  // Assignee options: Tommy + every registered fleet agent (deduped, Title-Cased for display).
+  // /api/agents returns lowercase names from Redis; existing task rows store Title Case.
+  const assigneeOptions = useMemo(() => {
+    const names = new Set<string>(['Tommy']);
+    for (const a of agents) names.add(titleCase(a.name));
+    return Array.from(names).sort().map(n => ({ value: n, label: n }));
+  }, [agents]);
+
   /* ---------- render ---------- */
 
   return (
@@ -698,6 +727,14 @@ function TasksPage() {
                 <X size={10} />
               </button>
             )}
+            <span className="text-11 text-[var(--text-muted)]">Sort</span>
+            <Select
+              value={sortBy}
+              options={SORT_OPTIONS}
+              onChange={(v) => setSortBy(v as SortBy)}
+              placeholder=""
+              aria-label="Sort tasks"
+            />
             <Badge label={`${displayed.length} tasks`} variant="neutral" size="xs" />
           </div>
         }
@@ -764,7 +801,7 @@ function TasksPage() {
                 <div className="text-11 text-[var(--text-muted)]" style={{ fontWeight: 400, marginBottom: 4 }}>Assignee</div>
                 <Select
                   value={selectedTask.assignee}
-                  options={ASSIGNEE_OPTIONS}
+                  options={assigneeOptions}
                   onChange={val => handleFieldChange('assignee', val)}
                   placeholder="Unassigned"
                   aria-label="Assignee"
