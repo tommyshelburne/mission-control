@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 
-const STAGES = ['applied', 'screening', 'interview', 'offer', 'closed'] as const;
+const STAGES = ['inbox', 'applied', 'screening', 'interview', 'offer', 'closed'] as const;
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -49,10 +49,12 @@ export async function POST(request: Request) {
     notes = '',
     next_action = '',
     next_action_date,
+    requires_login = 0,
   } = body as {
     title?: unknown; company?: unknown; stage?: string; source?: string; location?: string;
     salary_min?: number | null; salary_max?: number | null; url?: string; contact?: string;
     notes?: string; next_action?: string; next_action_date?: string | null;
+    requires_login?: number;
   };
 
   if (!title || typeof title !== 'string' || !title.trim()) {
@@ -72,9 +74,9 @@ export async function POST(request: Request) {
 
   const info = db.prepare(`
     INSERT INTO opportunities
-      (title, company, stage, source, location, salary_min, salary_max, url, contact, notes, next_action, next_action_date, applied_at, position)
+      (title, company, stage, source, location, salary_min, salary_max, url, contact, notes, next_action, next_action_date, applied_at, position, requires_login)
     VALUES
-      (@title, @company, @stage, @source, @location, @salary_min, @salary_max, @url, @contact, @notes, @next_action, @next_action_date, @applied_at, @position)
+      (@title, @company, @stage, @source, @location, @salary_min, @salary_max, @url, @contact, @notes, @next_action, @next_action_date, @applied_at, @position, @requires_login)
   `).run({
     title: title.trim(),
     company: company.trim(),
@@ -90,6 +92,7 @@ export async function POST(request: Request) {
     next_action_date: next_action_date || null,
     applied_at: appliedAt,
     position,
+    requires_login: requires_login ? 1 : 0,
   });
 
   const row = db.prepare('SELECT * FROM opportunities WHERE id = ?').get(info.lastInsertRowid);

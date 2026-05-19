@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 
-const STAGES = ['applied', 'screening', 'interview', 'offer', 'closed'] as const;
+const STAGES = ['inbox', 'applied', 'screening', 'interview', 'offer', 'closed'] as const;
 const ALLOWED = [
   'title', 'company', 'stage', 'source', 'location', 'salary_min', 'salary_max',
   'url', 'contact', 'notes', 'next_action', 'next_action_date', 'applied_at',
-  'closed_reason', 'position',
+  'closed_reason', 'position', 'requires_login',
 ] as const;
 
 export async function PATCH(request: Request, props: { params: Promise<{ id: string }> }) {

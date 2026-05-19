@@ -18,7 +18,7 @@ import { Badge, Button, SlidePanel, Spinner, EmptyState } from '@/components/ui'
 
 /* ---------- types ---------- */
 
-type Stage = 'applied' | 'screening' | 'interview' | 'offer' | 'closed';
+type Stage = 'inbox' | 'applied' | 'screening' | 'interview' | 'offer' | 'closed';
 
 interface Opportunity {
   id: number;
@@ -47,6 +47,7 @@ interface Response {
 }
 
 const COLUMNS: { key: Stage; label: string; color: string }[] = [
+  { key: 'inbox',      label: 'Inbox',      color: '#94a3b8' },
   { key: 'applied',    label: 'Applied',    color: '#6366f1' },
   { key: 'screening',  label: 'Screening',  color: '#f59e0b' },
   { key: 'interview',  label: 'Interview',  color: '#ec4899' },
@@ -97,7 +98,7 @@ export default function PipelinePage() {
   const addCompanyRef = useRef<HTMLInputElement>(null);
 
   const grouped = useMemo(() => {
-    const g: Record<Stage, Opportunity[]> = { applied: [], screening: [], interview: [], offer: [], closed: [] };
+    const g: Record<Stage, Opportunity[]> = { inbox: [], applied: [], screening: [], interview: [], offer: [], closed: [] };
     for (const o of data?.opportunities ?? []) g[o.stage].push(o);
     return g;
   }, [data]);
@@ -116,6 +117,27 @@ export default function PipelinePage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['opportunities'] });
       qc.invalidateQueries({ queryKey: ['activity-home'] });
+    },
+  });
+
+  // Inbox → Applied is the promotion path: server creates the TickTick task
+  // and writes back tick_tick_id. A plain PATCH would skip that side effect.
+  const promoteOpp = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/opportunities/${id}/promote`, { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? `Promote failed: ${res.status}`);
+      if (json?.warning) {
+        console.warn(`[pipeline] promote warning for ${id}: ${json.warning} — ${json.detail ?? ''}`);
+      }
+      return json;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['opportunities'] });
+      qc.invalidateQueries({ queryKey: ['activity-home'] });
+    },
+    onError: (err) => {
+      console.error('[pipeline] promote failed:', err);
     },
   });
 
@@ -164,7 +186,11 @@ export default function PipelinePage() {
       if (targetOpp) targetStage = targetOpp.stage;
     }
     if (targetStage && targetStage !== activeOpp.stage) {
-      patchOpp.mutate({ id: activeOpp.id, body: { stage: targetStage } });
+      if (activeOpp.stage === 'inbox' && targetStage === 'applied') {
+        promoteOpp.mutate(activeOpp.id);
+      } else {
+        patchOpp.mutate({ id: activeOpp.id, body: { stage: targetStage } });
+      }
     }
   };
 
