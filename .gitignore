@@ -18,6 +18,7 @@ data/
 
 # local config
 .mcp.json
+.claude/
 
 # playwright
 /test-results/
