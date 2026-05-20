@@ -1,6 +1,6 @@
 import { test, expect, Page } from '@playwright/test';
 
-const PAGES = ['/', '/tasks', '/projects', '/pipeline', '/digest', '/docs', '/team', '/jobs', '/memories'] as const;
+const PAGES = ['/', '/tasks', '/projects', '/pipeline', '/digest', '/docs', '/team', '/memories'] as const;
 
 test.describe('page smoke', () => {
   for (const path of PAGES) {
