@@ -5,8 +5,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNow } from '@/lib/hooks';
 import {
   DndContext, DragOverlay, PointerSensor, KeyboardSensor,
-  useSensor, useSensors, useDroppable, closestCorners,
-  type DragEndEvent, type DragStartEvent,
+  useSensor, useSensors, useDroppable, closestCorners, pointerWithin,
+  type DragEndEvent, type DragStartEvent, type CollisionDetection,
 } from '@dnd-kit/core';
 import {
   SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy,
@@ -18,7 +18,7 @@ import { Badge, Button, SlidePanel, Spinner, EmptyState } from '@/components/ui'
 
 /* ---------- types ---------- */
 
-type Stage = 'applied' | 'screening' | 'interview' | 'offer' | 'closed';
+type Stage = 'inbox' | 'applied' | 'screening' | 'interview' | 'offer' | 'closed';
 
 interface Opportunity {
   id: number;
@@ -47,12 +47,24 @@ interface Response {
 }
 
 const COLUMNS: { key: Stage; label: string; color: string }[] = [
+  { key: 'inbox',      label: 'Inbox',      color: '#94a3b8' },
   { key: 'applied',    label: 'Applied',    color: '#6366f1' },
   { key: 'screening',  label: 'Screening',  color: '#f59e0b' },
   { key: 'interview',  label: 'Interview',  color: '#ec4899' },
   { key: 'offer',      label: 'Offer',      color: '#22c55e' },
   { key: 'closed',     label: 'Closed',     color: '#6b7280' },
 ];
+
+const COLUMN_KEYS = new Set<string>(COLUMNS.map((c) => c.key));
+
+// Prefer a column when the pointer is inside one — stops the over-target from
+// flickering between an adjacent column's card and the column you're aiming at.
+// Fall back to closestCorners so sortable card targeting still works.
+const collisionDetectionStrategy: CollisionDetection = (args) => {
+  const columnHits = pointerWithin(args).filter((c) => typeof c.id === 'string' && COLUMN_KEYS.has(c.id));
+  if (columnHits.length > 0) return columnHits;
+  return closestCorners(args);
+};
 
 const CLOSED_REASONS = ['', 'rejected', 'withdrew', 'accepted', 'ghosted', 'declined'] as const;
 const SOURCES = ['', 'linkedin', 'referral', 'direct', 'recruiter', 'other'];
@@ -97,7 +109,7 @@ export default function PipelinePage() {
   const addCompanyRef = useRef<HTMLInputElement>(null);
 
   const grouped = useMemo(() => {
-    const g: Record<Stage, Opportunity[]> = { applied: [], screening: [], interview: [], offer: [], closed: [] };
+    const g: Record<Stage, Opportunity[]> = { inbox: [], applied: [], screening: [], interview: [], offer: [], closed: [] };
     for (const o of data?.opportunities ?? []) g[o.stage].push(o);
     return g;
   }, [data]);
@@ -113,7 +125,54 @@ export default function PipelinePage() {
       });
       return res.json();
     },
-    onSuccess: () => {
+    onMutate: async ({ id, body }) => {
+      await qc.cancelQueries({ queryKey: ['opportunities'] });
+      const prev = qc.getQueryData<Response>(['opportunities']);
+      if (prev) {
+        qc.setQueryData<Response>(['opportunities'], {
+          ...prev,
+          opportunities: prev.opportunities.map((o) => (o.id === id ? { ...o, ...body } as Opportunity : o)),
+        });
+      }
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['opportunities'], ctx.prev);
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['opportunities'] });
+      qc.invalidateQueries({ queryKey: ['activity-home'] });
+    },
+  });
+
+  // Inbox → Applied is the promotion path: server creates the TickTick task
+  // and writes back tick_tick_id. A plain PATCH would skip that side effect.
+  const promoteOpp = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/opportunities/${id}/promote`, { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? `Promote failed: ${res.status}`);
+      if (json?.warning) {
+        console.warn(`[pipeline] promote warning for ${id}: ${json.warning} — ${json.detail ?? ''}`);
+      }
+      return json;
+    },
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: ['opportunities'] });
+      const prev = qc.getQueryData<Response>(['opportunities']);
+      if (prev) {
+        qc.setQueryData<Response>(['opportunities'], {
+          ...prev,
+          opportunities: prev.opportunities.map((o) => (o.id === id ? { ...o, stage: 'applied' as Stage } : o)),
+        });
+      }
+      return { prev };
+    },
+    onError: (err, _id, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['opportunities'], ctx.prev);
+      console.error('[pipeline] promote failed:', err);
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['opportunities'] });
       qc.invalidateQueries({ queryKey: ['activity-home'] });
     },
@@ -164,7 +223,11 @@ export default function PipelinePage() {
       if (targetOpp) targetStage = targetOpp.stage;
     }
     if (targetStage && targetStage !== activeOpp.stage) {
-      patchOpp.mutate({ id: activeOpp.id, body: { stage: targetStage } });
+      if (activeOpp.stage === 'inbox' && targetStage === 'applied') {
+        promoteOpp.mutate(activeOpp.id);
+      } else {
+        patchOpp.mutate({ id: activeOpp.id, body: { stage: targetStage } });
+      }
     }
   };
 
@@ -197,7 +260,7 @@ export default function PipelinePage() {
       ) : (
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCorners}
+          collisionDetection={collisionDetectionStrategy}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
@@ -217,7 +280,7 @@ export default function PipelinePage() {
               />
             ))}
           </div>
-          <DragOverlay>
+          <DragOverlay dropAnimation={null} style={{ width: 290 }}>
             {activeOpp ? <Card opp={activeOpp} isDragOverlay /> : null}
           </DragOverlay>
         </DndContext>
@@ -259,6 +322,7 @@ function Column({
 
   return (
     <div
+      ref={setNodeRef}
       className="flex flex-col w-[300px] min-w-[300px] gap-2 rounded-lg"
       style={{
         background: isOver ? 'rgba(99,102,241,0.06)' : 'transparent',
@@ -277,7 +341,7 @@ function Column({
         <Button variant="ghost" size="sm" onClick={onStartAdd}>+ New</Button>
       </div>
 
-      <div ref={setNodeRef} className="flex-1 overflow-y-auto flex flex-col gap-1.5 pr-1">
+      <div className="flex-1 overflow-y-auto flex flex-col gap-1.5 pr-1" style={{ minHeight: 80 }}>
         {addingHere && (
           <div
             className="p-3 rounded-md border border-[var(--accent)]"
@@ -333,7 +397,7 @@ const SortableCard = memo(function SortableCard({ opp, onClick }: { opp: Opportu
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.4 : 1,
+    opacity: isDragging ? 0 : 1,
     cursor: isDragging ? 'grabbing' : 'grab',
   };
   return (

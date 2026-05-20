@@ -108,7 +108,7 @@ CREATE TABLE opportunities (
   title            TEXT NOT NULL,
   company          TEXT NOT NULL,
   stage            TEXT NOT NULL DEFAULT 'applied'
-                   CHECK(stage IN ('applied','screening','interview','offer','closed')),
+                   CHECK(stage IN ('inbox','applied','screening','interview','offer','closed')),
   source           TEXT DEFAULT '',
   location         TEXT DEFAULT '',
   salary_min       INTEGER,
@@ -120,15 +120,19 @@ CREATE TABLE opportunities (
   next_action_date TEXT,
   applied_at       TEXT,
   closed_reason    TEXT DEFAULT ''
-                   CHECK(closed_reason IN ('','rejected','withdrew','accepted','ghosted','declined')),
+                   CHECK(closed_reason IN ('','rejected','withdrew','accepted','ghosted','declined','expired')),
   position         REAL DEFAULT 0,
   ticktick_id      TEXT,
+  applied_key      TEXT,
+  requires_login   INTEGER NOT NULL DEFAULT 0,
   created_at       TEXT DEFAULT (datetime('now')),
   updated_at       TEXT DEFAULT (datetime('now'))
 );
 
 CREATE INDEX idx_opportunities_stage    ON opportunities(stage);
+CREATE INDEX idx_opportunities_next     ON opportunities(next_action_date) WHERE next_action_date IS NOT NULL;
 CREATE INDEX idx_opportunities_position ON opportunities(stage, position);
+CREATE UNIQUE INDEX idx_opportunities_applied_key ON opportunities(applied_key) WHERE applied_key IS NOT NULL;
 
 CREATE VIRTUAL TABLE search_index USING fts5(
   entity_type UNINDEXED,
@@ -206,7 +210,10 @@ INSERT INTO _migrations (name) VALUES
   ('003_opportunities.sql'),
   ('004_fts5.sql'),
   ('005_opportunities_ticktick_id.sql'),
-  ('006_agent_cost_daily.sql');
+  ('006_agent_cost_daily.sql'),
+  ('006_opportunities_applied_key.sql'),
+  ('007_completed_at_backfill.sql'),
+  ('008_opportunities_inbox_stage.sql');
 `;
 
 export type TestDb = Database.Database;
