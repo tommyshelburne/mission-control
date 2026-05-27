@@ -5,6 +5,9 @@ import { USAGE_SCRIPT } from '@/lib/paths';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+const CACHE_TTL_MS = 60_000;
+let cached: { at: number; body: unknown } | null = null;
+
 type DayTotals = {
   turns: number;
   input: number;
@@ -81,6 +84,10 @@ function readLocalUsage(): {
 }
 
 export async function GET() {
+  if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
+    return NextResponse.json(cached.body);
+  }
+
   const local = readLocalUsage();
 
   const apiKey = process.env.OPENROUTER_API_KEY;
@@ -101,8 +108,7 @@ export async function GET() {
     }
   }
 
-  return NextResponse.json({
-    openrouter,
-    ...local,
-  });
+  const body = { openrouter, ...local };
+  cached = { at: Date.now(), body };
+  return NextResponse.json(body);
 }
