@@ -27,7 +27,7 @@ npx vitest run -t "creates a task"
 
 CI (`.github/workflows/ci.yml`) runs **lint + typecheck only** — no test job. Catch test regressions locally.
 
-The dev server is normally run by a user systemd unit on port 3000; `npm run dev` from a shell will collide with it. Stop the unit first or use a different `PORT=`.
+The systemd unit `~/.config/systemd/user/mission-control.service` runs a **production build** on port 3000 — `next build` as `ExecStartPre` then `next start` — not `next dev`. Each restart rebuilds (~14 s); if the build fails the unit stays down rather than serving stale code. Switched 2026-05-27 because long-running `next dev` accumulates swap (HMR module cache) and degrades into "page won't load" after a few days. To do local HMR development without colliding with the unit, run `PORT=3001 npm run dev` or stop the unit first.
 
 Requires Node 22+ and Redis on `127.0.0.1:6379`. Redis password is read from `${OPENCLAW_HOME}/secrets.json` (`redis_password` key) — missing file is tolerated, missing password silently falls back to `""`.
 
