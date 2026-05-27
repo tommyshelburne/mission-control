@@ -19,11 +19,10 @@ Built for an audience of one. Not a SaaS, not a template — every design choice
 | `/` | Activity feed across tasks, projects, agents |
 | `/tasks` | Kanban board with subtasks and slide-panel detail |
 | `/projects` | Project rollup with task progress |
-| `/pipeline` | Opportunity pipeline (Applied → Screening → Interview → Offer → Closed) |
+| `/pipeline` | Opportunity pipeline (Inbox → Applied → Screening → Interview → Offer → Closed) |
 | `/docs` | Markdown editor over the workspace docs tree, by category or date |
 | `/memories` | Daily + longterm notes |
 | `/team` | Agent fleet status, derived from heartbeats |
-| `/jobs` | TickTick-bridged opportunity inbox |
 | `/digest` | Generated daily summary |
 
 ## API
