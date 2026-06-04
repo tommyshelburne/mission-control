@@ -61,7 +61,10 @@ export function SlidePanel({ open, onClose, title, children }: SlidePanelProps) 
         <div
           style={{
             position: 'fixed', right: 0, top: 0, bottom: 0, zIndex: 50,
-            width: 420,
+            // Right-rail on desktop, full-width sheet on a phone — a fixed 420px
+            // panel overflowed a 390px viewport (triage F18). Baked into the
+            // primitive so no page can regress it.
+            width: 'min(420px, 100vw)',
             background: 'var(--glass-bg)',
             backdropFilter: 'blur(16px) saturate(180%)',
             borderLeft: '1px solid var(--glass-border)',
