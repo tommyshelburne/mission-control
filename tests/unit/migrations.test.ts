@@ -72,6 +72,28 @@ describe('runMigrations', () => {
     expect(userTables).toEqual(['one']);
   });
 
+  it('treats a duplicate column as a benign, recorded no-op (idempotent ADD COLUMN)', () => {
+    // Simulates a column already added out-of-band (the v2 fleet's dispatch /
+    // depends_on ALTERs): a later numbered migration re-adds it. SQLite has no
+    // ADD COLUMN IF NOT EXISTS, so this must record without throwing.
+    writeMigration('001_base.sql', 'CREATE TABLE tasks (id INTEGER); ALTER TABLE tasks ADD COLUMN dispatched_at TEXT;');
+    writeMigration('002_re_add.sql', 'ALTER TABLE tasks ADD COLUMN dispatched_at TEXT;');
+
+    const db = new Database(':memory:');
+    expect(() => runMigrations(db)).not.toThrow();
+
+    const recorded = db
+      .prepare('SELECT name FROM _migrations ORDER BY name')
+      .all()
+      .map((r) => (r as { name: string }).name);
+    expect(recorded).toEqual(['001_base.sql', '002_re_add.sql']);
+
+    // Column exists exactly once; a second run skips both.
+    const cols = (db.prepare("PRAGMA table_info('tasks')").all() as Array<{ name: string }>).map((c) => c.name);
+    expect(cols.filter((c) => c === 'dispatched_at')).toHaveLength(1);
+    expect(runMigrations(db).applied).toEqual([]);
+  });
+
   it('rolls back when a migration fails (transaction)', () => {
     writeMigration('001_good.sql', 'CREATE TABLE good (x INTEGER);');
     writeMigration('002_bad.sql', 'CREATE TABLE bad (x INTEGER); INSERT INTO not_a_table VALUES (1);');

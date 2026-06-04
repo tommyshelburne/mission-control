@@ -7,6 +7,14 @@ export interface MigrationResult {
   skipped: string[];
 }
 
+// SQLite has no `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`. A numbered migration
+// that adds a column already present (e.g. the dispatch / depends_on columns the
+// v2 fleet added out-of-band before they were folded into 009/010) raises
+// exactly this error, and the schema is already in the target state.
+function isDuplicateColumnError(err: unknown): boolean {
+  return err instanceof Error && /duplicate column name/i.test(err.message);
+}
+
 export function runMigrations(db: Database.Database): MigrationResult {
   const migrationsDir = path.join(process.cwd(), 'lib', 'migrations');
 
@@ -36,11 +44,18 @@ export function runMigrations(db: Database.Database): MigrationResult {
       continue;
     }
     const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
-    const tx = db.transaction(() => {
-      db.exec(sql);
+    try {
+      db.transaction(() => {
+        db.exec(sql);
+        record.run(file);
+      })();
+    } catch (err) {
+      // Treat an already-present column as a benign no-op: record the migration
+      // so it is not retried every boot, without re-running its DDL. Any other
+      // error is a real failure and must surface (the transaction rolled back).
+      if (!isDuplicateColumnError(err)) throw err;
       record.run(file);
-    });
-    tx();
+    }
     result.applied.push(file);
   }
 

@@ -47,13 +47,20 @@ CREATE TABLE tasks (
   created_at    TEXT DEFAULT (datetime('now')),
   updated_at    TEXT DEFAULT (datetime('now')),
   dispatched_at TEXT,
-  dispatch_envelope_id TEXT
+  dispatch_envelope_id TEXT,
+  depends_on INTEGER
 );
 
-CREATE INDEX idx_tasks_project   ON tasks(project_id);
-CREATE INDEX idx_tasks_parent    ON tasks(parent_id);
-CREATE INDEX idx_tasks_status    ON tasks(status);
-CREATE INDEX idx_tasks_dispatch  ON tasks(dispatched_at, assignee);
+CREATE INDEX idx_tasks_project    ON tasks(project_id);
+CREATE INDEX idx_tasks_parent     ON tasks(parent_id);
+CREATE INDEX idx_tasks_status     ON tasks(status);
+CREATE INDEX idx_tasks_dispatch   ON tasks(dispatched_at, assignee);
+CREATE INDEX idx_tasks_depends_on ON tasks(depends_on);
+CREATE TRIGGER tasks_depends_on_cascade
+AFTER DELETE ON tasks
+BEGIN
+  UPDATE tasks SET depends_on = NULL WHERE depends_on = OLD.id;
+END;
 
 CREATE TABLE activity_log (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -122,7 +129,7 @@ CREATE TABLE opportunities (
   closed_reason    TEXT DEFAULT ''
                    CHECK(closed_reason IN ('','rejected','withdrew','accepted','ghosted','declined','expired')),
   position         REAL DEFAULT 0,
-  ticktick_id      TEXT,
+  tick_tick_id     TEXT,
   applied_key      TEXT,
   requires_login   INTEGER NOT NULL DEFAULT 0,
   created_at       TEXT DEFAULT (datetime('now')),
@@ -133,6 +140,7 @@ CREATE INDEX idx_opportunities_stage    ON opportunities(stage);
 CREATE INDEX idx_opportunities_next     ON opportunities(next_action_date) WHERE next_action_date IS NOT NULL;
 CREATE INDEX idx_opportunities_position ON opportunities(stage, position);
 CREATE UNIQUE INDEX idx_opportunities_applied_key ON opportunities(applied_key) WHERE applied_key IS NOT NULL;
+CREATE UNIQUE INDEX idx_opportunities_tick_tick_id ON opportunities(tick_tick_id) WHERE tick_tick_id IS NOT NULL;
 
 CREATE VIRTUAL TABLE search_index USING fts5(
   entity_type UNINDEXED,
@@ -213,7 +221,9 @@ INSERT INTO _migrations (name) VALUES
   ('006_agent_cost_daily.sql'),
   ('006_opportunities_applied_key.sql'),
   ('007_completed_at_backfill.sql'),
-  ('008_opportunities_inbox_stage.sql');
+  ('008_opportunities_inbox_stage.sql'),
+  ('009_tasks_dispatch.sql'),
+  ('010_tasks_depends_on.sql');
 `;
 
 export type TestDb = Database.Database;
