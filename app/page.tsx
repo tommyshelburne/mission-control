@@ -184,7 +184,9 @@ export default function HomePage() {
     <>
       <PageHeader title="Activity" subtitle="Live" />
 
-      <div className="p-6 space-y-6 max-w-[900px]">
+      {/* main is overflow-hidden, so this wrapper owns the page's vertical scroll */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="p-6 space-y-6 max-w-[900px]">
         {/* Action-required notifications */}
         {(notifData?.notifications?.length ?? 0) > 0 && (
           <section>
@@ -291,6 +293,7 @@ export default function HomePage() {
             ))
           )}
         </section>
+        </div>
       </div>
     </>
   );
