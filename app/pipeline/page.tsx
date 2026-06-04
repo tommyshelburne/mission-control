@@ -264,7 +264,7 @@ export default function PipelinePage() {
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <div className="flex flex-row gap-3 p-6 flex-1 overflow-auto items-start">
+          <div className="flex flex-col md:flex-row gap-3 p-4 md:p-6 flex-1 overflow-auto items-stretch md:items-start">
             {COLUMNS.map((col) => (
               <Column
                 key={col.key}
@@ -323,7 +323,7 @@ function Column({
   return (
     <div
       ref={setNodeRef}
-      className="flex flex-col w-[300px] min-w-[300px] gap-2 rounded-lg"
+      className="flex flex-col w-full md:w-[300px] md:min-w-[300px] gap-2 rounded-lg"
       style={{
         background: isOver ? 'rgba(99,102,241,0.06)' : 'transparent',
         outline: isOver ? '1.5px solid rgba(99,102,241,0.3)' : '1.5px solid transparent',
