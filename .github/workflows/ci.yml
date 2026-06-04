@@ -17,3 +17,7 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      # vitest is hermetic (tmp OPENCLAW_ROOT, in-memory SQLite + FakeRedis, no
+      # services) and runs in ~1.3s, so it gates every push/PR. e2e stays out of
+      # the required gate (needs a built server + Redis).
+      - run: npm run test
