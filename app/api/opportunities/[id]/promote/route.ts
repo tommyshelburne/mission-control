@@ -62,7 +62,7 @@ export async function POST(_request: Request, props: { params: Promise<{ id: str
   if (row.stage !== 'applied') {
     db.prepare(
       `INSERT INTO activity_log (entity_type, entity_id, action, actor, detail)
-       VALUES ('project', ?, 'status_changed', 'Tommy', ?)`,
+       VALUES ('opportunity', ?, 'status_changed', 'Tommy', ?)`,
     ).run(
       id,
       JSON.stringify({

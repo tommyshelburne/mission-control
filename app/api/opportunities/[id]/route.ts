@@ -48,7 +48,7 @@ export async function PATCH(request: Request, props: { params: Promise<{ id: str
   if (body.stage && body.stage !== existing.stage) {
     db.prepare(`
       INSERT INTO activity_log (entity_type, entity_id, action, actor, detail)
-      VALUES ('project', ?, 'status_changed', 'Tommy', ?)
+      VALUES ('opportunity', ?, 'status_changed', 'Tommy', ?)
     `).run(id, JSON.stringify({ kind: 'opportunity', from: existing.stage, to: body.stage, company: existing.company, title: existing.title }));
   }
 

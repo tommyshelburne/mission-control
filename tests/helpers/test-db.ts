@@ -65,7 +65,7 @@ END;
 CREATE TABLE activity_log (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   entity_type TEXT NOT NULL
-              CHECK(entity_type IN ('task','project','agent','system')),
+              CHECK(entity_type IN ('task','project','opportunity','agent','system')),
   entity_id   INTEGER,
   action      TEXT NOT NULL
               CHECK(action IN ('created','updated','status_changed','commented','deleted','heartbeat')),
@@ -223,7 +223,8 @@ INSERT INTO _migrations (name) VALUES
   ('007_completed_at_backfill.sql'),
   ('008_opportunities_inbox_stage.sql'),
   ('009_tasks_dispatch.sql'),
-  ('010_tasks_depends_on.sql');
+  ('010_tasks_depends_on.sql'),
+  ('011_activity_opportunity.sql');
 `;
 
 export type TestDb = Database.Database;

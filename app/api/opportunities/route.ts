@@ -99,7 +99,7 @@ export async function POST(request: Request) {
 
   db.prepare(`
     INSERT INTO activity_log (entity_type, entity_id, action, actor, detail)
-    VALUES ('project', ?, 'created', 'Tommy', ?)
+    VALUES ('opportunity', ?, 'created', 'Tommy', ?)
   `).run(info.lastInsertRowid, JSON.stringify({ kind: 'opportunity', title, company, stage }));
 
   return NextResponse.json({ opportunity: row }, { status: 201 });

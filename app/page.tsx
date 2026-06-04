@@ -12,7 +12,7 @@ import { Badge, Spinner } from '@/components/ui';
 
 interface ActivityRow {
   id: number;
-  entity_type: 'task' | 'project' | 'agent' | 'system';
+  entity_type: 'task' | 'project' | 'opportunity' | 'agent' | 'system';
   entity_id: number | null;
   action: string;
   actor: string;
@@ -90,8 +90,10 @@ const ACTION_COLOR: Record<string, string> = {
 
 function entityHref(row: ActivityRow): string | null {
   if (row.entity_type === 'task' && row.entity_id) return `/tasks?task=${row.entity_id}`;
+  if (row.entity_type === 'opportunity') return '/pipeline';
   if (row.entity_type === 'project' && row.entity_id) {
-    // Opportunities are logged under entity_type='project'; route them to the pipeline.
+    // Legacy guard: opportunity rows predating migration 011 are still tagged
+    // entity_type='project' with detail.kind='opportunity'.
     const d = parseDetail(row.detail);
     if (typeof d === 'object' && d !== null && (d as { kind?: string }).kind === 'opportunity') return '/pipeline';
     return `/projects?project=${row.entity_id}`;

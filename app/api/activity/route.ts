@@ -29,9 +29,10 @@ export async function GET(request: Request) {
   const rows = db.prepare(`
     SELECT a.*,
       CASE a.entity_type
-        WHEN 'task'    THEN (SELECT title FROM tasks    WHERE id = a.entity_id)
-        WHEN 'project' THEN (SELECT name  FROM projects WHERE id = a.entity_id)
-        WHEN 'agent'   THEN (SELECT name  FROM agents   WHERE id = a.entity_id)
+        WHEN 'task'        THEN (SELECT title FROM tasks    WHERE id = a.entity_id)
+        WHEN 'project'     THEN (SELECT name  FROM projects WHERE id = a.entity_id)
+        WHEN 'opportunity' THEN (SELECT company || ' — ' || title FROM opportunities WHERE id = a.entity_id)
+        WHEN 'agent'       THEN (SELECT name  FROM agents   WHERE id = a.entity_id)
         ELSE NULL
       END AS entity_label
     FROM activity_log a

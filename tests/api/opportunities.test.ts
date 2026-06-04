@@ -61,9 +61,19 @@ describe('POST /api/opportunities', () => {
     expect(body.opportunity).toMatchObject({ title: 'Senior FE', company: 'Acme', stage: 'applied' });
     expect(body.opportunity.applied_at).toBeTruthy();
 
-    const log = db.prepare("SELECT * FROM activity_log WHERE entity_type='project' ORDER BY id DESC LIMIT 1").get() as { action: string; detail: string };
+    const log = db.prepare("SELECT * FROM activity_log WHERE entity_type='opportunity' ORDER BY id DESC LIMIT 1").get() as { action: string; detail: string; entity_id: number };
     expect(log.action).toBe('created');
     expect(JSON.parse(log.detail)).toMatchObject({ kind: 'opportunity', title: 'Senior FE' });
+    expect(log.entity_id).toBe(body.opportunity.id);
+  });
+
+  it('opportunity activity resolves to a "company — title" label in the feed (F23)', async () => {
+    const oppId = (await (await post({ title: 'Senior FE', company: 'Acme' })).json()).opportunity.id;
+    const { GET: activityGet } = await import('@/app/api/activity/route');
+    const body = await (await activityGet(new Request('http://x/api/activity?entity_type=opportunity'))).json();
+    const row = (body.activity as Array<{ entity_id: number; entity_type: string; entity_label: string }>).find((r) => r.entity_id === oppId);
+    expect(row?.entity_type).toBe('opportunity');
+    expect(row?.entity_label).toBe('Acme — Senior FE');
   });
 
   it('rejects missing title', async () => {
