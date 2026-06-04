@@ -6,7 +6,7 @@ import { User } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Badge, StatusDot, Spinner } from '@/components/ui';
 import type { AgentDTO } from '@/lib/types';
-import { relativeTime } from '@/lib/time';
+import { relativeTime, relativeDay } from '@/lib/time';
 import { ROSTER } from '@/lib/roster';
 
 /* ---------- types ---------- */
@@ -38,10 +38,45 @@ const AGENT_META: Record<string, AgentMeta> = {
 
 /* ---------- helpers ---------- */
 
+interface AgentCost {
+  turns: number;
+  lastDay: string;
+}
+
 function statusDotStatus(s: Agent['effective_status']): 'active' | 'idle' | 'error' | 'unknown' {
   if (s === 'busy') return 'active';
   if (s === 'idle') return 'idle';
   return 'unknown';
+}
+
+/**
+ * Presentation status for an agent. A genuinely-live heartbeat wins (kept for
+ * when the heartbeat producer is wired). With no live heartbeat — the current
+ * reality, since nothing posts heartbeats — fall back to the cost rollup, which
+ * is the real signal of whether an agent has been working (triage F2). This
+ * replaces a busy/idle/offline badge that was structurally always "offline".
+ */
+function presence(agent: Agent, cost?: AgentCost): {
+  dot: 'active' | 'idle' | 'error' | 'unknown';
+  label: string;
+  variant: 'success' | 'neutral' | 'muted';
+} {
+  if (agent.effective_status !== 'offline') {
+    return {
+      dot: statusDotStatus(agent.effective_status),
+      label: agent.effective_status,
+      variant: agent.effective_status === 'busy' ? 'success' : 'neutral',
+    };
+  }
+  if (cost?.lastDay) {
+    const recent = relativeDay(cost.lastDay) === 'today' || relativeDay(cost.lastDay) === 'yesterday';
+    return { dot: recent ? 'active' : 'idle', label: recent ? 'active' : 'idle', variant: recent ? 'success' : 'neutral' };
+  }
+  return { dot: 'unknown', label: 'dormant', variant: 'muted' };
+}
+
+function fmtTurns(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }
 
 function actionLabel(action: string): string {
@@ -63,6 +98,21 @@ export default function TeamPage() {
     queryFn: async () => (await fetch('/api/activity?limit=200')).json(),
     refetchInterval: 120_000, // SSE-primary; poll is a fallback
   });
+
+  // Real per-agent activity from the cost rollup (turns + last-active day),
+  // already rolled up to canonical roster names. The honest liveness signal
+  // while heartbeats are dead (triage F2).
+  const { data: costData } = useQuery<{ agents: Array<{ agent: string; turns: number; last_active_day: string }> }>({
+    queryKey: ['cost-by-agent', 7],
+    queryFn: async () => (await fetch('/api/cost-by-agent?days=7')).json(),
+    refetchInterval: 120_000,
+  });
+
+  const costByAgent = useMemo(() => {
+    const map: Record<string, AgentCost> = {};
+    for (const c of costData?.agents ?? []) map[c.agent] = { turns: c.turns, lastDay: c.last_active_day };
+    return map;
+  }, [costData]);
 
   const activityByActor = useMemo(() => {
     const map: Record<string, ActivityRow[]> = {};
@@ -104,7 +154,7 @@ export default function TeamPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-6">
             <AgentCard agent={tommyCard} activity={[]} />
             {agents.map((a) => (
-              <AgentCard key={a.name} agent={a} activity={activityByActor[a.name] ?? []} />
+              <AgentCard key={a.name} agent={a} activity={activityByActor[a.name] ?? []} cost={costByAgent[a.name]} />
             ))}
           </div>
         </div>
@@ -115,16 +165,12 @@ export default function TeamPage() {
 
 /* ---------- agent card ---------- */
 
-function AgentCard({ agent, activity }: { agent: Agent; activity: ActivityRow[] }) {
+function AgentCard({ agent, activity, cost }: { agent: Agent; activity: ActivityRow[]; cost?: AgentCost }) {
   const meta = AGENT_META[agent.name] ?? { role: '—', color: 'var(--border-mid)' };
   const isTommy = agent.name === 'tommy';
   const displayName = agent.name.charAt(0).toUpperCase() + agent.name.slice(1);
-
-  const statusBadgeVariant: Record<Agent['effective_status'], 'success' | 'neutral' | 'muted'> = {
-    busy:    'success',
-    idle:    'neutral',
-    offline: 'muted',
-  };
+  const pres = presence(agent, cost);
+  const live = agent.effective_status !== 'offline';
 
   return (
     <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-lg overflow-hidden hover:border-[var(--border-mid)] transition-all duration-[80ms]">
@@ -136,13 +182,13 @@ function AgentCard({ agent, activity }: { agent: Agent; activity: ActivityRow[] 
           {isTommy ? (
             <User size={14} className="text-[var(--text-muted)] flex-shrink-0" />
           ) : (
-            <StatusDot status={statusDotStatus(agent.effective_status)} />
+            <StatusDot status={pres.dot} />
           )}
           <span style={{ fontSize: 14, fontWeight: 600 }} className="text-[var(--text-primary)] flex-1 truncate">
             {displayName}
           </span>
           {!isTommy && (
-            <Badge variant={statusBadgeVariant[agent.effective_status]} size="xs" label={agent.effective_status} />
+            <Badge variant={pres.variant} size="xs" label={pres.label} />
           )}
         </div>
 
@@ -170,10 +216,16 @@ function AgentCard({ agent, activity }: { agent: Agent; activity: ActivityRow[] 
           </div>
         )}
 
-        {/* Row 5: last heartbeat */}
+        {/* Row 5: liveness — a live heartbeat when present, otherwise the real
+            cost-rollup activity (turns + last-active day), which is the only
+            honest "is this agent working" signal today (triage F2). */}
         {!isTommy && (
           <div style={{ fontSize: 11 }} className="text-[var(--text-muted)] mt-1 ml-[22px]">
-            Last seen: {relativeTime(agent.last_heartbeat_ms)}
+            {live
+              ? `Last seen: ${relativeTime(agent.last_heartbeat_ms)}`
+              : cost?.lastDay
+                ? `${fmtTurns(cost.turns)} turns · last active ${relativeDay(cost.lastDay)}`
+                : 'No recent activity'}
           </div>
         )}
 

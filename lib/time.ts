@@ -26,3 +26,17 @@ export function relativeTime(input: number | string | null | undefined): string 
   const days = Math.floor(hrs / 24);
   return `${days}d ago`;
 }
+
+/** Day-granular relative label for a 'YYYY-MM-DD' date (UTC). 'today' /
+ *  'yesterday' / 'Nd ago' / 'never'. Used for cost-rollup last-active days. */
+export function relativeDay(ymd: string | null | undefined): string {
+  if (!ymd) return 'never';
+  const d = new Date(ymd + 'T00:00:00Z');
+  if (Number.isNaN(d.getTime())) return 'never';
+  const now = new Date();
+  const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const days = Math.round((todayUtc - d.getTime()) / 86_400_000);
+  if (days <= 0) return 'today';
+  if (days === 1) return 'yesterday';
+  return `${days}d ago`;
+}

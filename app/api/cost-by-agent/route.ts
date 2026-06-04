@@ -25,6 +25,7 @@ interface AgentTotals {
   shadow_cost_usd: number;
   total_savings_usd: number;
   turns: number;
+  last_active_day: string; // most recent day with any activity, YYYY-MM-DD
   providers: Record<string, { turns: number; total_cost_usd: number; shadow_cost_usd: number }>;
 }
 
@@ -59,6 +60,7 @@ export async function GET(request: Request) {
         shadow_cost_usd: 0,
         total_savings_usd: 0,
         turns: 0,
+        last_active_day: '',
         providers: {},
       };
       byAgent.set(name, entry);
@@ -66,6 +68,7 @@ export async function GET(request: Request) {
     entry.total_cost_usd += r.total_cost_usd;
     entry.shadow_cost_usd += r.shadow_cost_usd;
     entry.turns += r.turns;
+    if (r.day > entry.last_active_day) entry.last_active_day = r.day;
     const p = entry.providers[r.provider] ?? { turns: 0, total_cost_usd: 0, shadow_cost_usd: 0 };
     p.turns += r.turns;
     p.total_cost_usd += r.total_cost_usd;
