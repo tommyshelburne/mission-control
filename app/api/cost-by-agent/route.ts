@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { canonicalAgent } from '@/lib/roster';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -43,20 +44,24 @@ export async function GET(request: Request) {
     ORDER BY day DESC, agent ASC, provider ASC
   `).all({ since: sinceDay }) as Row[];
 
-  // Per-agent rollup across the window (for the dashboard cards).
+  // Per-agent rollup across the window (for the dashboard cards). Sub-mode cost
+  // buckets (main, claw-daily, hermes-opus, warden-pretailor, …) roll up to
+  // their canonical roster member so the count matches the fleet (F12). Fleet
+  // totals are unchanged — regrouping a sum is associative.
   const byAgent = new Map<string, AgentTotals>();
   for (const r of rows) {
-    let entry = byAgent.get(r.agent);
+    const name = canonicalAgent(r.agent);
+    let entry = byAgent.get(name);
     if (!entry) {
       entry = {
-        agent: r.agent,
+        agent: name,
         total_cost_usd: 0,
         shadow_cost_usd: 0,
         total_savings_usd: 0,
         turns: 0,
         providers: {},
       };
-      byAgent.set(r.agent, entry);
+      byAgent.set(name, entry);
     }
     entry.total_cost_usd += r.total_cost_usd;
     entry.shadow_cost_usd += r.shadow_cost_usd;

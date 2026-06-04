@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getRedis } from '@/lib/redis';
 import type { AgentDTO, AgentPresence } from '@/lib/types';
+import { ROSTER_NAMES } from '@/lib/roster';
 
 const STALE_THRESHOLD_SEC = 300;
 
@@ -28,33 +29,25 @@ function buildAgent(hash: Record<string, string>): AgentDTO {
 export async function GET() {
   const redis = getRedis();
 
-  // SCAN for all agent state keys — never KEYS
-  const keys: string[] = [];
-  let cursor = '0';
-  do {
-    const [nextCursor, batch] = await redis.scan(cursor, 'MATCH', 'agent:*:state', 'COUNT', 100);
-    cursor = nextCursor;
-    keys.push(...batch);
-  } while (cursor !== '0');
-
-  if (keys.length === 0) {
-    return NextResponse.json({ agents: [], stale_threshold_seconds: STALE_THRESHOLD_SEC });
-  }
-
-  // Fetch all hashes in parallel
+  // Roster-driven, not SCAN-driven: the canonical fleet (lib/roster) defines
+  // membership; Redis provides presence. This guarantees every roster agent
+  // appears even if it has never heartbeat (claw + quill were missing before),
+  // ignores stray/legacy keys, and keeps the count stable and correct (F12).
   const pipeline = redis.pipeline();
-  for (const key of keys) {
-    pipeline.hgetall(key);
+  for (const name of ROSTER_NAMES) {
+    pipeline.hgetall(`agent:${name}:state`);
   }
   const results = await pipeline.exec();
 
-  const agents = (results ?? [])
-    .map(([err, hash]) => {
-      if (err || !hash || typeof hash !== 'object') return null;
-      return buildAgent(hash as Record<string, string>);
-    })
-    .filter((a): a is NonNullable<typeof a> => a !== null)
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const agents: AgentDTO[] = ROSTER_NAMES.map((name, i) => {
+    const res = results?.[i];
+    const hash =
+      res && !res[0] && res[1] && typeof res[1] === 'object'
+        ? (res[1] as Record<string, string>)
+        : {};
+    // Roster name wins over any stale name stored in the hash.
+    return buildAgent({ ...hash, name });
+  });
 
   return NextResponse.json({ agents, stale_threshold_seconds: STALE_THRESHOLD_SEC });
 }

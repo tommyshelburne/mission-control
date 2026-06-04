@@ -4,6 +4,7 @@ import type Database from 'better-sqlite3';
 import { makeTestDb } from '../helpers/test-db';
 import { FakeRedis } from '../helpers/fake-redis';
 import { jsonRequest, paramsOf } from '../helpers/route';
+import { ROSTER_NAMES } from '@/lib/roster';
 
 let db: Database.Database;
 let redis: FakeRedis;
@@ -21,10 +22,19 @@ afterEach(() => {
 });
 
 describe('GET /api/agents', () => {
-  it('returns empty + threshold when no agents have reported', async () => {
+  it('returns the full roster as offline when none have reported', async () => {
     const { GET } = await import('@/app/api/agents/route');
-    const body = await (await GET()).json();
-    expect(body).toEqual({ agents: [], stale_threshold_seconds: 300 });
+    const body = (await (await GET()).json()) as {
+      agents: Array<{ name: string; effective_status: string; last_heartbeat_ms: number | null }>;
+      stale_threshold_seconds: number;
+    };
+    // Roster-driven: every canonical agent appears even with no Redis state (F12).
+    expect(body.stale_threshold_seconds).toBe(300);
+    expect(body.agents).toHaveLength(ROSTER_NAMES.length);
+    expect(body.agents.every((a) => a.effective_status === 'offline')).toBe(true);
+    expect(body.agents.every((a) => a.last_heartbeat_ms === null)).toBe(true);
+    // claw + quill were the agents missing from the old SCAN-driven grid.
+    expect(body.agents.map((a) => a.name)).toEqual(expect.arrayContaining(['claw', 'quill']));
   });
 
   it('marks agents stale when their heartbeat is older than the threshold', async () => {
@@ -48,12 +58,18 @@ describe('GET /api/agents', () => {
     });
 
     const { GET } = await import('@/app/api/agents/route');
-    const body = (await (await GET()).json()) as { agents: Array<{ name: string; effective_status: string }> };
-    expect(body.agents).toHaveLength(2);
+    const body = (await (await GET()).json()) as {
+      agents: Array<{ name: string; effective_status: string; last_heartbeat_ms: number | null }>;
+    };
+    expect(body.agents).toHaveLength(ROSTER_NAMES.length);
     const claw = body.agents.find((a) => a.name === 'claw');
     const rex = body.agents.find((a) => a.name === 'rex');
-    expect(claw?.effective_status).toBe('idle');
-    expect(rex?.effective_status).toBe('offline');
+    const quill = body.agents.find((a) => a.name === 'quill');
+    expect(claw?.effective_status).toBe('idle'); // 60s ago — fresh
+    expect(rex?.effective_status).toBe('offline'); // 1000s ago — stale
+    // a roster member with no heartbeat reads as offline with no timestamp
+    expect(quill?.effective_status).toBe('offline');
+    expect(quill?.last_heartbeat_ms).toBeNull();
   });
 });
 

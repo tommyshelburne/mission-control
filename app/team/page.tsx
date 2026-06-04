@@ -7,6 +7,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { Badge, StatusDot, Spinner } from '@/components/ui';
 import type { AgentDTO } from '@/lib/types';
 import { relativeTime } from '@/lib/time';
+import { ROSTER } from '@/lib/roster';
 
 /* ---------- types ---------- */
 
@@ -28,19 +29,11 @@ interface AgentMeta {
   color: string;
 }
 
+// Presentation metadata, keyed by agent name. Roles/colors come from the shared
+// roster (single source); Tommy is the one non-agent card.
 const AGENT_META: Record<string, AgentMeta> = {
-  tommy:  { role: 'Human · Owner',          color: '#3b82f6' },
-  claw:   { role: 'Chief of Staff',         color: '#5b5bd6' },
-  rex:    { role: 'Head Engineer',          color: '#22c55e' },
-  hermes: { role: 'Research / Reasoning',   color: '#06b6d4' },
-  quill:  { role: 'Writer',                 color: '#ec4899' },
-  scout:  { role: 'Researcher',             color: '#f59e0b' },
-  coach:  { role: 'Interview Prep',         color: '#14b8a6' },
-  warden: { role: 'Oversight / Monitor',    color: '#ef4444' },
-  herald: { role: 'Morning Brief',          color: '#8b5cf6' },
-  sage:   { role: 'Skill Curriculum',       color: '#a855f7' },
-  pulse:  { role: 'Network & Community',    color: '#f43f5e' },
-  ledger: { role: 'Runway & Finance',       color: '#eab308' },
+  tommy: { role: 'Human · Owner', color: '#3b82f6' },
+  ...Object.fromEntries(ROSTER.map((a) => [a.name, { role: a.role, color: a.color }])),
 };
 
 /* ---------- helpers ---------- */
