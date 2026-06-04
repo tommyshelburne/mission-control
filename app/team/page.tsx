@@ -5,22 +5,12 @@ import { useQuery } from '@tanstack/react-query';
 import { User } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Badge, StatusDot, Spinner } from '@/components/ui';
+import type { AgentDTO } from '@/lib/types';
+import { relativeTime } from '@/lib/time';
 
 /* ---------- types ---------- */
 
-interface Agent {
-  id: number;
-  name: string;
-  status: 'idle' | 'busy' | 'offline';
-  effective_status: 'idle' | 'busy' | 'offline';
-  current_task_id: number | null;
-  current_task_title: string | null;
-  current_activity: string;
-  model: string;
-  last_heartbeat: string | null;
-  staleness_seconds: number | null;
-  updated_at: string;
-}
+type Agent = AgentDTO;
 
 interface ActivityRow {
   id: number;
@@ -54,19 +44,6 @@ const AGENT_META: Record<string, AgentMeta> = {
 };
 
 /* ---------- helpers ---------- */
-
-function relativeTime(iso: string | null): string {
-  if (!iso) return 'Never';
-  const diff = Date.now() - new Date(iso.replace(' ', 'T') + 'Z').getTime();
-  const secs = Math.floor(diff / 1000);
-  if (secs < 60) return `${secs}s ago`;
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-}
 
 function statusDotStatus(s: Agent['effective_status']): 'active' | 'idle' | 'error' | 'unknown' {
   if (s === 'busy') return 'active';
@@ -107,7 +84,6 @@ export default function TeamPage() {
 
   // Tommy is not in the agents table; synthesize an entry.
   const tommyCard: Agent = {
-    id: -1,
     name: 'tommy',
     status: 'idle',
     effective_status: 'idle',
@@ -115,9 +91,8 @@ export default function TeamPage() {
     current_task_title: null,
     current_activity: '',
     model: '',
-    last_heartbeat: null,
+    last_heartbeat_ms: null,
     staleness_seconds: null,
-    updated_at: '',
   };
 
   return (
@@ -190,8 +165,10 @@ function AgentCard({ agent, activity }: { agent: Agent; activity: ActivityRow[] 
           </div>
         )}
 
-        {/* Row 4: current activity */}
-        {!isTommy && agent.current_activity && (
+        {/* Row 4: current activity — only meaningful while the agent is live.
+            An offline agent has no "now"; showing stale activity next to an
+            OFFLINE badge produced the self-contradictory card (triage F13). */}
+        {!isTommy && agent.effective_status !== 'offline' && agent.current_activity && (
           <div style={{ fontSize: 11 }} className="text-[var(--text-secondary)] mt-2 ml-[22px]">
             <span style={{ color: 'var(--text-muted)' }}>now:</span> {agent.current_activity}
             {agent.current_task_title && (
@@ -203,7 +180,7 @@ function AgentCard({ agent, activity }: { agent: Agent; activity: ActivityRow[] 
         {/* Row 5: last heartbeat */}
         {!isTommy && (
           <div style={{ fontSize: 11 }} className="text-[var(--text-muted)] mt-1 ml-[22px]">
-            Last seen: {relativeTime(agent.last_heartbeat)}
+            Last seen: {relativeTime(agent.last_heartbeat_ms)}
           </div>
         )}
 

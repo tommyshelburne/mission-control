@@ -1,18 +1,20 @@
 import { NextResponse } from 'next/server';
 import { getRedis } from '@/lib/redis';
+import type { AgentDTO, AgentPresence } from '@/lib/types';
 
 const STALE_THRESHOLD_SEC = 300;
 
-function buildAgent(hash: Record<string, string>) {
+function buildAgent(hash: Record<string, string>): AgentDTO {
   const nowMs = Date.now();
   const lastHeartbeatMs = hash.last_heartbeat_ms ? Number(hash.last_heartbeat_ms) : null;
   const stalenessSec = lastHeartbeatMs != null ? Math.floor((nowMs - lastHeartbeatMs) / 1000) : null;
-  const effective_status =
-    stalenessSec === null || stalenessSec > STALE_THRESHOLD_SEC ? 'offline' : hash.status;
+  const status = (hash.status as AgentPresence) ?? 'offline';
+  const effective_status: AgentPresence =
+    stalenessSec === null || stalenessSec > STALE_THRESHOLD_SEC ? 'offline' : status;
 
   return {
     name: hash.name,
-    status: hash.status ?? 'offline',
+    status,
     last_heartbeat_ms: lastHeartbeatMs,
     current_task_id: hash.current_task_id ? Number(hash.current_task_id) : null,
     current_task_title: hash.current_task_title ?? null,
