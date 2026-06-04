@@ -15,7 +15,10 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] }, testIgnore: /mobile\.spec\.ts/ },
+    // Pixel 5 is a chromium-based mobile emulation (393px, isMobile, touch) — the
+    // iPhone devices default to WebKit, which isn't installed in CI / this env.
+    { name: 'mobile', use: { ...devices['Pixel 5'] }, testMatch: /mobile\.spec\.ts/ },
   ],
   webServer: {
     command: `PORT=${PORT} npm run start`,
