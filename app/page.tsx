@@ -90,7 +90,12 @@ const ACTION_COLOR: Record<string, string> = {
 
 function entityHref(row: ActivityRow): string | null {
   if (row.entity_type === 'task' && row.entity_id) return `/tasks?task=${row.entity_id}`;
-  if (row.entity_type === 'project' && row.entity_id) return `/projects?project=${row.entity_id}`;
+  if (row.entity_type === 'project' && row.entity_id) {
+    // Opportunities are logged under entity_type='project'; route them to the pipeline.
+    const d = parseDetail(row.detail);
+    if (typeof d === 'object' && d !== null && (d as { kind?: string }).kind === 'opportunity') return '/pipeline';
+    return `/projects?project=${row.entity_id}`;
+  }
   if (row.entity_type === 'agent') return '/team';
   return null;
 }
@@ -99,18 +104,37 @@ function parseDetail(s: string): Record<string, unknown> | string {
   try { return JSON.parse(s); } catch { return s; }
 }
 
-function summarizeAction(row: ActivityRow): string {
+/**
+ * Derives the object an activity row acted on (e.g. "Adobe — AI SWE") plus an
+ * optional sub-line, from the row's detail JSON with entity_label as fallback.
+ * Opportunities are logged as entity_type='project' so the entity_label join
+ * returns null — but their detail carries {kind:'opportunity',company,title},
+ * which is why the feed showed object-less "Tommy created" rows (triage F7).
+ * Reading detail.title/company here fixes that without a schema change.
+ */
+function describeActivity(row: ActivityRow): { object: string | null; sub: string | null } {
   const d = parseDetail(row.detail);
-  if (row.action === 'heartbeat' && typeof d === 'object' && d !== null) {
-    const obj = d as { status?: string; currentActivity?: string };
-    return obj.currentActivity ? `${obj.status} — ${obj.currentActivity}` : obj.status || 'heartbeat';
+  const fallback = row.entity_label ?? null;
+
+  if (typeof d === 'string') return { object: fallback, sub: d || null };
+  if (typeof d !== 'object' || d === null) return { object: fallback, sub: null };
+
+  const o = d as {
+    kind?: string; title?: string; company?: string; text?: string;
+    from?: string; to?: string; status?: string; currentActivity?: string;
+  };
+  const transition = o.from && o.to ? `${o.from} → ${o.to}` : null;
+
+  if (o.kind === 'opportunity') {
+    const object = [o.company, o.title].filter(Boolean).join(' — ') || fallback;
+    return { object, sub: transition };
   }
-  if (typeof d === 'string') return d;
-  if (typeof d === 'object' && d !== null) {
-    const obj = d as { text?: string };
-    if (obj.text) return obj.text;
+  if (row.action === 'heartbeat') {
+    return { object: fallback, sub: o.currentActivity ?? o.status ?? null };
   }
-  return row.action.replace('_', ' ');
+  if (o.title) return { object: o.title, sub: transition };
+  if (o.text) return { object: fallback, sub: o.text };
+  return { object: fallback, sub: transition };
 }
 
 /* ---------- component ---------- */
@@ -285,7 +309,7 @@ function ActivityRow({ row, isFirst }: { row: ActivityRow; isFirst: boolean }) {
   const Icon = ACTION_ICON[row.action] ?? Edit;
   const color = ACTION_COLOR[row.action] ?? 'var(--text-muted)';
   const href = entityHref(row);
-  const summary = summarizeAction(row);
+  const { object, sub } = describeActivity(row);
 
   const body = (
     <div
@@ -297,13 +321,13 @@ function ActivityRow({ row, isFirst }: { row: ActivityRow; isFirst: boolean }) {
         <div style={{ fontSize: 13, color: 'var(--text-primary)' }} className="flex items-center gap-2">
           <span style={{ fontWeight: 500 }}>{row.actor}</span>
           <span style={{ color: 'var(--text-muted)' }}>{row.action.replace('_', ' ')}</span>
-          {row.entity_label && (
-            <span className="truncate">{row.entity_label}</span>
+          {object && (
+            <span className="truncate" style={{ color: 'var(--text-primary)' }}>{object}</span>
           )}
         </div>
-        {summary && summary !== row.action.replace('_', ' ') && (
+        {sub && (
           <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }} className="truncate">
-            {summary}
+            {sub}
           </div>
         )}
       </div>
