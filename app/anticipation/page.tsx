@@ -44,7 +44,7 @@ export default function AnticipationPage() {
   const { data, isLoading } = useQuery<AnticipationResponse>({
     queryKey: ['anticipation'],
     queryFn: async () => (await fetch('/api/anticipation')).json(),
-    refetchInterval: 10_000,
+    refetchInterval: 30_000, // no SSE event for anticipation; 10s was overly aggressive
   });
 
   return (

@@ -49,7 +49,7 @@ export function NotificationBell() {
   const { data } = useQuery<NotifResponse>({
     queryKey: ['notifications'],
     queryFn: async () => (await fetch('/api/notifications?limit=50')).json(),
-    refetchInterval: 30_000,
+    refetchInterval: 120_000, // SSE-primary; poll is a fallback
   });
 
   const markRead = useMutation({

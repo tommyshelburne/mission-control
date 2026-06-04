@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { Sidebar } from './Sidebar';
 import { DrawerContext } from './DrawerContext';
+import { useEventStream } from '@/lib/hooks';
 
 /**
  * Responsive app shell (triage F5). Below `md` the 208px sidebar becomes an
@@ -15,6 +16,9 @@ import { DrawerContext } from './DrawerContext';
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
+
+  // Live updates over SSE for the whole app (replaces aggressive polling).
+  useEventStream();
 
   // Close the drawer on navigation by adjusting state during render (React's
   // endorsed pattern for resetting state when a derived value changes) — avoids

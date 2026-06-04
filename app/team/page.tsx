@@ -55,13 +55,13 @@ export default function TeamPage() {
   const { data: agentsData, isLoading: agentsLoading } = useQuery<{ agents: Agent[] }>({
     queryKey: ['agents'],
     queryFn: async () => (await fetch('/api/agents')).json(),
-    refetchInterval: 30_000,
+    refetchInterval: 120_000, // SSE-primary; poll is a fallback
   });
 
   const { data: activityData } = useQuery<{ activity: ActivityRow[] }>({
     queryKey: ['activity-recent'],
     queryFn: async () => (await fetch('/api/activity?limit=200')).json(),
-    refetchInterval: 30_000,
+    refetchInterval: 120_000, // SSE-primary; poll is a fallback
   });
 
   const activityByActor = useMemo(() => {

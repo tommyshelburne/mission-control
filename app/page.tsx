@@ -144,13 +144,13 @@ export default function HomePage() {
   const { data: activityData, isLoading } = useQuery<{ activity: ActivityRow[] }>({
     queryKey: ['activity-home'],
     queryFn: async () => (await fetch('/api/activity?limit=100')).json(),
-    refetchInterval: 30_000,
+    refetchInterval: 120_000, // SSE-primary; poll is a fallback
   });
 
   const { data: notifData } = useQuery<{ notifications: Notification[] }>({
     queryKey: ['notifications-actions'],
     queryFn: async () => (await fetch('/api/notifications?type=action_required&unread=1')).json(),
-    refetchInterval: 30_000,
+    refetchInterval: 120_000, // SSE-primary; poll is a fallback
   });
 
   const { data: tasksData } = useQuery<{ tasks: Task[] }>({
