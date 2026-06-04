@@ -9,13 +9,14 @@
  */
 import Database from 'better-sqlite3';
 import path from 'node:path';
+import { applyPragmas } from '../lib/db';
 
 const DB_PATH = process.env.MC_DB_PATH ?? path.join(process.cwd(), 'data', 'mc.db');
 const GENERAL_RETENTION_DAYS = 180;
 const HEARTBEAT_RETENTION_DAYS = 30;
 
 const db = new Database(DB_PATH);
-db.pragma('journal_mode = WAL');
+applyPragmas(db);
 
 const prune = db.transaction(() => {
   const heartbeatInfo = db.prepare(

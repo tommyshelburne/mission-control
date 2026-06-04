@@ -24,6 +24,7 @@ import Database from 'better-sqlite3';
 import path from 'node:path';
 import { fetchTickTickJobs, type TickTickColumn } from '../lib/ticktick';
 import { runMigrations } from '../lib/migrations';
+import { applyPragmas } from '../lib/db';
 import { DB_PATH } from '../lib/paths';
 
 type Stage = 'applied' | 'screening' | 'interview' | 'offer' | 'closed';
@@ -76,7 +77,7 @@ async function main() {
   }
 
   const db = new Database(DB_PATH);
-  db.pragma('journal_mode = WAL');
+  applyPragmas(db);
   // Standalone-safe: apply any pending migrations so we don't depend on the
   // Next server having booted first. Idempotent.
   runMigrations(db);
